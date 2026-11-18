@@ -1,0 +1,16 @@
+{
+  "name": "auto-clipper-desktop",
+  "productName": "Auto Clipper",
+  "version": "1.0.0",
+  "description": "Aplikasi desktop Windows untuk membuat klip vertikal secara lokal.",
+  "main": "main.js",
+  "author": "Auto Clipper",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "build:windows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\\Build-Installer.ps1"
+  },
+  "devDependencies": {
+    "electron": "45.3.1"
+  }
+}

@@ -1,0 +1,143 @@
+export interface SubtitleCue {
+  start: number;
+  end: number;
+  text: string;
+  _chunks?: string[][];
+  _chunksFor?: string;
+}
+
+export interface ClipCandidate {
+  id: string;
+  start: number;
+  end: number;
+  title: string;
+  reasons: string[];
+  quote: string;
+  hook?: string;
+  aiScored?: boolean;
+  score: number;
+  selected: boolean;
+}
+
+export type SubtitleMode = 'auto' | 'external' | 'none';
+
+export type SubtitleStyleId =
+  | 'capcut'
+  | 'tiktok_stroke'
+  | 'hormozi'
+  | 'highlight'
+  | 'pop'
+  | 'box3d'
+  | 'pill_glass'
+  | 'retro_shadow'
+  | 'outline_hollow'
+  | 'typewriter_box'
+  | 'gradient'
+  | 'karaoke_bar'
+  | 'classic'
+  | 'clean'
+  | 'neon';
+
+export type SubtitlePosition = 'bottom' | 'lower' | 'center' | 'top';
+
+export type FramingMode = 'fit' | 'motion' | 'manual';
+
+export type ExportFormat = 'webm' | 'mp4';
+
+export interface CaptionSettings {
+  showCaptions: boolean;
+  fontFamily: string;
+  style: SubtitleStyleId;
+  fontSize: number;
+  position: SubtitlePosition;
+  highlightColor: string;
+  caps: boolean;
+  italic?: boolean;
+  fontWeight?: '700' | '800' | '900';
+}
+
+export interface AudioEnvelopeData {
+  hop: number;
+  rms: Float32Array;
+  n: number;
+  thr: number;
+  peaks: number[];
+}
+
+export interface MotionState {
+  previous: Uint8ClampedArray | null;
+  focusX: number;
+  targetX: number;
+  lastSampleTime: number;
+  filteredX: number | null;
+  prevDerivative: number;
+  prevFilterTime: number | null;
+  prevMeanLum: number | null;
+}
+
+export interface ExportedClipRecord {
+  id: string;
+  projectId: string;
+  projectName: string;
+  url: string;
+  filename: string;
+  ext: string;
+  rangeText: string;
+  durationSec: number;
+  sizeBytes: number;
+  label: string;
+  sourceLabel: string;
+  hook?: string;
+  captionText?: string;
+  createdAt: number;
+}
+
+export type BatchItemStatus = 'queued' | 'loading' | 'analyzing' | 'exporting' | 'done' | 'error' | 'stopped';
+
+export interface BatchQueueItem {
+  id: string;
+  file: File;
+  name: string;
+  size: number;
+  status: BatchItemStatus;
+  statusText: string;
+  progress: number;
+  clipsCount: number;
+  exportedCount: number;
+}
+
+export interface YoutubePreviewInfo {
+  id: string;
+  url: string;
+  title: string;
+  channel: string;
+  thumbnail: string;
+  duration: number;
+  canDownloadDirect: boolean;
+  state: 'idle' | 'loading' | 'ready' | 'error';
+  error?: string;
+}
+
+export type AppView = 'home' | 'aivideo' | 'studio' | 'exports' | 'updates';
+export type StudioTab = 'clips' | 'style' | 'export';
+
+export interface AiScene {
+  index: number;
+  visualTitle: string;
+  narration: string;
+  captionText: string;
+  imagePrompt: string;
+  durationSec: number;
+  timestampLabel: string;
+  customImageUrl?: string;
+}
+
+export interface AiVoiceTrack {
+  url: string;
+  durationSec: number;
+  source: 'tts' | 'microphone';
+}
+
+export type AiVisualEffect = 'kenburns' | 'cinematic' | 'pulse' | 'none';
+export type AiTransitionStyle = 'fade' | 'zoom' | 'slide' | 'none';
+export type AiTheme = 'cinematic' | 'editorial' | 'tech' | 'minimal';

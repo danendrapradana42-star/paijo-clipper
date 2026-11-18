@@ -1,0 +1,277 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    function isValidStudioPreference(data) {
+      return data.keys().hasAll([
+          'ownerId',
+          'showCaptions',
+          'fontFamily',
+          'style',
+          'fontSize',
+          'position',
+          'highlightColor',
+          'caps',
+          'italic',
+          'fontWeight',
+          'clipLengthRange',
+          'clipLimit',
+          'framingMode',
+          'exportFormat',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId',
+          'showCaptions',
+          'fontFamily',
+          'style',
+          'fontSize',
+          'position',
+          'highlightColor',
+          'caps',
+          'italic',
+          'fontWeight',
+          'clipLengthRange',
+          'clipLimit',
+          'framingMode',
+          'exportFormat',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.ownerId is string && isValidId(data.ownerId) && data.ownerId == request.auth.uid
+        && data.showCaptions is bool
+        && data.fontFamily is string && data.fontFamily.size() >= 1 && data.fontFamily.size() <= 160
+        && data.style is string && data.style in [
+          'capcut',
+          'tiktok_stroke',
+          'hormozi',
+          'highlight',
+          'pop',
+          'box3d',
+          'pill_glass',
+          'retro_shadow',
+          'outline_hollow',
+          'typewriter_box',
+          'gradient',
+          'karaoke_bar',
+          'classic',
+          'clean',
+          'neon'
+        ]
+        && data.fontSize is number && data.fontSize >= 20 && data.fontSize <= 96
+        && data.position is string && data.position in ['bottom', 'lower', 'center', 'top']
+        && data.highlightColor is string && data.highlightColor.size() <= 16 && data.highlightColor.matches('^#[0-9a-fA-F]{6}$')
+        && data.caps is bool
+        && data.italic is bool
+        && data.fontWeight is string && data.fontWeight in ['700', '800', '900']
+        && data.clipLengthRange is string && data.clipLengthRange in ['30-60', '60-90', '90-150']
+        && data.clipLimit is number && data.clipLimit >= 1 && data.clipLimit <= 30
+        && data.framingMode is string && data.framingMode in ['fit', 'motion', 'manual']
+        && data.exportFormat is string && data.exportFormat in ['webm', 'mp4']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidClipProject(data) {
+      return data.keys().hasAll([
+          'ownerId',
+          'projectKey',
+          'projectName',
+          'sourceLabel',
+          'durationSec',
+          'clipsCount',
+          'exportedCount',
+          'clips',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId',
+          'projectKey',
+          'projectName',
+          'sourceLabel',
+          'durationSec',
+          'clipsCount',
+          'exportedCount',
+          'clips',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.ownerId is string && isValidId(data.ownerId) && data.ownerId == request.auth.uid
+        && data.projectKey is string && isValidId(data.projectKey)
+        && data.projectName is string && data.projectName.size() >= 1 && data.projectName.size() <= 160
+        && data.sourceLabel is string && data.sourceLabel.size() >= 1 && data.sourceLabel.size() <= 160
+        && data.durationSec is number && data.durationSec >= 0 && data.durationSec <= 86400
+        && data.clipsCount is number && data.clipsCount >= 0 && data.clipsCount <= 25
+        && data.exportedCount is number && data.exportedCount >= 0 && data.exportedCount <= 50
+        && data.clips is list && data.clips.size() <= 25 && (data.clips.size() == 0 || data.clips[0] is map)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAiScript(data) {
+      return data.keys().hasAll([
+          'ownerId',
+          'title',
+          'prompt',
+          'durationMinutes',
+          'totalDurationSec',
+          'theme',
+          'language',
+          'voiceName',
+          'scenes',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId',
+          'title',
+          'prompt',
+          'durationMinutes',
+          'totalDurationSec',
+          'theme',
+          'language',
+          'voiceName',
+          'scenes',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.ownerId is string && isValidId(data.ownerId) && data.ownerId == request.auth.uid
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 160
+        && data.prompt is string && data.prompt.size() >= 1 && data.prompt.size() <= 600
+        && data.durationMinutes is number && data.durationMinutes >= 5 && data.durationMinutes <= 10
+        && data.totalDurationSec is number && data.totalDurationSec >= 300 && data.totalDurationSec <= 1200
+        && data.theme is string && data.theme in ['cinematic', 'editorial', 'tech', 'minimal']
+        && data.language is string && data.language in ['id', 'en']
+        && data.voiceName is string && data.voiceName.size() >= 1 && data.voiceName.size() <= 40
+        && data.scenes is list && data.scenes.size() >= 1 && data.scenes.size() <= 30 && data.scenes[0] is map
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    match /users/{userId}/preferences/{prefId} {
+      allow get: if isSignedIn() && isValidId(userId) && isValidId(prefId) && isOwner(userId);
+      allow list: if isSignedIn() && isOwner(userId) && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn()
+        && isValidId(userId)
+        && isValidId(prefId)
+        && isOwner(userId)
+        && isValidStudioPreference(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isSignedIn()
+        && isValidId(userId)
+        && isValidId(prefId)
+        && isOwner(userId)
+        && isValidStudioPreference(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'showCaptions',
+          'fontFamily',
+          'style',
+          'fontSize',
+          'position',
+          'highlightColor',
+          'caps',
+          'italic',
+          'fontWeight',
+          'clipLengthRange',
+          'clipLimit',
+          'framingMode',
+          'exportFormat',
+          'updatedAt'
+        ]);
+      allow delete: if isSignedIn() && isValidId(userId) && isValidId(prefId) && isOwner(userId);
+    }
+
+    match /users/{userId}/projects/{projectId} {
+      allow get: if isSignedIn() && isValidId(userId) && isValidId(projectId) && isOwner(userId);
+      allow list: if isSignedIn() && isOwner(userId) && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn()
+        && isValidId(userId)
+        && isValidId(projectId)
+        && isOwner(userId)
+        && isValidClipProject(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isSignedIn()
+        && isValidId(userId)
+        && isValidId(projectId)
+        && isOwner(userId)
+        && isValidClipProject(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().projectKey == existing().projectKey
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'projectName',
+          'sourceLabel',
+          'durationSec',
+          'clipsCount',
+          'exportedCount',
+          'clips',
+          'updatedAt'
+        ]);
+      allow delete: if isSignedIn() && isValidId(userId) && isValidId(projectId) && isOwner(userId);
+    }
+
+    match /users/{userId}/aiScripts/{scriptId} {
+      allow get: if isSignedIn() && isValidId(userId) && isValidId(scriptId) && isOwner(userId);
+      allow list: if isSignedIn() && isOwner(userId) && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn()
+        && isValidId(userId)
+        && isValidId(scriptId)
+        && isOwner(userId)
+        && isValidAiScript(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isSignedIn()
+        && isValidId(userId)
+        && isValidId(scriptId)
+        && isOwner(userId)
+        && isValidAiScript(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'title',
+          'prompt',
+          'durationMinutes',
+          'totalDurationSec',
+          'theme',
+          'language',
+          'voiceName',
+          'scenes',
+          'updatedAt'
+        ]);
+      allow delete: if isSignedIn() && isValidId(userId) && isValidId(scriptId) && isOwner(userId);
+    }
+  }
+}

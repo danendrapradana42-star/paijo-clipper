@@ -1,0 +1,191 @@
+{
+  "entities": {
+    "StudioPreference": {
+      "title": "StudioPreference",
+      "description": "User subtitle font, style, and studio export defaults synced across devices.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "showCaptions": { "type": "boolean" },
+        "fontFamily": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "style": {
+          "type": "string",
+          "enum": [
+            "capcut",
+            "tiktok_stroke",
+            "hormozi",
+            "highlight",
+            "pop",
+            "box3d",
+            "pill_glass",
+            "retro_shadow",
+            "outline_hollow",
+            "typewriter_box",
+            "gradient",
+            "karaoke_bar",
+            "classic",
+            "clean",
+            "neon"
+          ],
+          "maxLength": 32
+        },
+        "fontSize": { "type": "number" },
+        "position": {
+          "type": "string",
+          "enum": ["bottom", "lower", "center", "top"],
+          "maxLength": 16
+        },
+        "highlightColor": {
+          "type": "string",
+          "maxLength": 16,
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "caps": { "type": "boolean" },
+        "italic": { "type": "boolean" },
+        "fontWeight": {
+          "type": "string",
+          "enum": ["700", "800", "900"],
+          "maxLength": 8
+        },
+        "clipLengthRange": {
+          "type": "string",
+          "enum": ["30-60", "60-90", "90-150"],
+          "maxLength": 16
+        },
+        "clipLimit": { "type": "number" },
+        "framingMode": {
+          "type": "string",
+          "enum": ["fit", "motion", "manual"],
+          "maxLength": 16
+        },
+        "exportFormat": {
+          "type": "string",
+          "enum": ["webm", "mp4"],
+          "maxLength": 8
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId",
+        "showCaptions",
+        "fontFamily",
+        "style",
+        "fontSize",
+        "position",
+        "highlightColor",
+        "caps",
+        "italic",
+        "fontWeight",
+        "clipLengthRange",
+        "clipLimit",
+        "framingMode",
+        "exportFormat",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ClipProject": {
+      "title": "ClipProject",
+      "description": "Saved clipping project metadata, clip boundaries, and export summary.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "projectKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "projectName": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "sourceLabel": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "durationSec": { "type": "number" },
+        "clipsCount": { "type": "number" },
+        "exportedCount": { "type": "number" },
+        "clips": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId",
+        "projectKey",
+        "projectName",
+        "sourceLabel",
+        "durationSec",
+        "clipsCount",
+        "exportedCount",
+        "clips",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AiVideoScript": {
+      "title": "AiVideoScript",
+      "description": "Saved 5-10 minute AI Video script and scene timeline.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "prompt": { "type": "string", "minLength": 1, "maxLength": 600 },
+        "durationMinutes": { "type": "number" },
+        "totalDurationSec": { "type": "number" },
+        "theme": {
+          "type": "string",
+          "enum": ["cinematic", "editorial", "tech", "minimal"],
+          "maxLength": 24
+        },
+        "language": {
+          "type": "string",
+          "enum": ["id", "en"],
+          "maxLength": 8
+        },
+        "voiceName": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "scenes": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId",
+        "title",
+        "prompt",
+        "durationMinutes",
+        "totalDurationSec",
+        "theme",
+        "language",
+        "voiceName",
+        "scenes",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/preferences/{prefId}": {
+      "schema": { "$ref": "#/entities/StudioPreference" },
+      "description": "Owner-only studio font, caption style, and export preferences."
+    },
+    "/users/{userId}/projects/{projectId}": {
+      "schema": { "$ref": "#/entities/ClipProject" },
+      "description": "Owner-only saved video clipping projects and clip ranges."
+    },
+    "/users/{userId}/aiScripts/{scriptId}": {
+      "schema": { "$ref": "#/entities/AiVideoScript" },
+      "description": "Owner-only saved 5-10 minute Video AI scripts and scenes."
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Auto Clipper Studio",
+  "description": "Studio pemotong video vertikal 9:16 lokal dengan analisis audio, batch processing, kustomisasi subtitle karaoke, dan pipeline Video AI.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
