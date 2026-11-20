@@ -15,6 +15,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { User } from 'firebase/auth';
+import { useTranslation } from '../i18n/LanguageContext';
 import {
   DEVELOPER_ADMIN_EMAIL,
   compareVersions,
@@ -117,10 +118,10 @@ const CHANGELOG: Array<{
 
 const REPO_STORAGE_KEY = 'autoclipper.update.githubRepo';
 
-function formatTimestamp(iso?: string | number | null): string {
+function formatTimestamp(iso: string | number | null | undefined, bcp47 = 'id-ID'): string {
   if (!iso) return '—';
   try {
-    return new Date(iso).toLocaleString('id-ID', {
+    return new Date(iso).toLocaleString(bcp47, {
       day: '2-digit',
       month: 'short',
       year: 'numeric',
@@ -145,6 +146,7 @@ export function UpdatesView({
   onSignOutGoogle,
   onBackHome,
 }: UpdatesViewProps) {
+  const { t, bcp47 } = useTranslation();
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
   const [githubRepo, setGithubRepo] = useState(() => {
     try {
@@ -392,42 +394,50 @@ export function UpdatesView({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-white">
-            Versi &amp; Pembaruan Aplikasi
+            {t('updates.title')}
           </h1>
-          <p className="text-xs text-[#8f98a8] mt-1">
-            Firestore dikhususkan untuk menyimpan build pengembangan &amp; rilis update aplikasi (Minor +0.0.1 / Major +0.1.0).
+          <p className="text-xs text-[#93a7cc] mt-1">
+            {t('updates.subtitle')}
           </p>
         </div>
         <button
           type="button"
           onClick={onBackHome}
-          className="px-3.5 py-2 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-white cursor-pointer"
+          className="px-3.5 py-2 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-white cursor-pointer"
         >
-          ← Kembali ke Beranda
+          {t('updates.backHome')}
         </button>
       </div>
 
       {/* Current Version & Update Actions */}
-      <section className="bg-[#11141c] border border-[#1e2432] rounded-xl p-5 space-y-4">
+      <section className="bg-[#101d3d] border border-[#1e3159] rounded-xl p-5 space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-1">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-[#8f98a8]">
-              Versi Aplikasi Aktif
-            </div>
-            <div className="flex items-baseline gap-3">
-              <span className="text-2xl sm:text-3xl font-extrabold font-mono tabular-nums text-white">
-                v{CLIENT_APP_VERSION}
-              </span>
-              <span className="text-xs font-semibold text-[#c7ff55]">
-                Auto Clipper Studio
-              </span>
-            </div>
-            <div className="text-xs text-[#8f98a8] font-mono tabular-nums">
-              Server: v{serverVersion}
-              {versionInfo?.nodeVersion ? ` · Runtime ${versionInfo.nodeVersion}` : ''}
-              {versionInfo?.serverStartedAt
-                ? ` · Mulai ${formatTimestamp(versionInfo.serverStartedAt)}`
-                : ''}
+          <div className="flex items-start gap-3.5">
+            <img
+              src="/assets/aistudio/paijoclip-icon_f8577a46.png"
+              alt="Paijo Clip logo"
+              referrerPolicy="no-referrer"
+              className="w-11 h-14 object-contain shrink-0 rounded-lg"
+            />
+            <div className="space-y-1">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-[#93a7cc]">
+                {t('updates.activeVersion')}
+              </div>
+              <div className="flex items-baseline gap-3">
+                <span className="text-2xl sm:text-3xl font-extrabold font-mono tabular-nums text-white">
+                  v{CLIENT_APP_VERSION}
+                </span>
+                <span className="text-xs font-semibold text-[#ff8224]">
+                  Paijo Clip
+                </span>
+              </div>
+              <div className="text-xs text-[#93a7cc] font-mono tabular-nums">
+                Server: v{serverVersion}
+                {versionInfo?.nodeVersion ? ` · Runtime ${versionInfo.nodeVersion}` : ''}
+                {versionInfo?.serverStartedAt
+                  ? ` · ${formatTimestamp(versionInfo.serverStartedAt, bcp47)}`
+                  : ''}
+              </div>
             </div>
           </div>
 
@@ -436,19 +446,19 @@ export function UpdatesView({
               type="button"
               disabled={checking || updating}
               onClick={() => handleCheckUpdates(false)}
-              className="px-3.5 py-2 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-white inline-flex items-center gap-1.5 disabled:opacity-40 cursor-pointer"
+              className="px-3.5 py-2 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-white inline-flex items-center gap-1.5 disabled:opacity-40 cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${checking ? 'animate-spin' : ''}`} />
-              {checking ? 'Memeriksa…' : 'Cek Pembaruan'}
+              {checking ? t('updates.checking') : t('updates.checkUpdates')}
             </button>
             <button
               type="button"
               disabled={updating}
               onClick={handleRequestUpdate}
-              className="px-4 py-2 rounded-lg bg-[#ff5436] hover:bg-[#ff6b52] disabled:opacity-40 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+              className="px-4 py-2 rounded-lg bg-[#ff6b00] hover:bg-[#ff8224] disabled:opacity-40 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
             >
               <ArrowUpCircle className="w-3.5 h-3.5" />
-              {updating ? 'Memperbarui…' : 'Update ke Versi Terbaru'}
+              {updating ? t('updates.updating') : t('updates.updateLatest')}
             </button>
           </div>
         </div>
@@ -460,21 +470,21 @@ export function UpdatesView({
               <div className="flex items-center gap-2 text-xs font-bold text-white">
                 <Rocket className="w-4 h-4 text-[#c7ff55]" />
                 <span>
-                  Update Cloud Tersedia dari Firestore:{' '}
+                  {t('updates.cloudAlert')}{' '}
                   <span className="font-mono text-[#c7ff55]">v{latestCloudPublished.version}</span>{' '}
                   ({latestCloudPublished.updateType === 'major' ? 'Major +0.1.0' : 'Minor +0.0.1'})
                 </span>
               </div>
-              <span className="text-[11px] font-mono text-[#8f98a8]">
-                {formatTimestamp(latestCloudPublished.updatedAtMs)}
+              <span className="text-[11px] font-mono text-[#93a7cc]">
+                {formatTimestamp(latestCloudPublished.updatedAtMs, bcp47)}
               </span>
             </div>
             <div className="text-xs font-semibold text-white">{latestCloudPublished.title}</div>
-            <p className="text-xs text-[#cbd2de] whitespace-pre-line">
+            <p className="text-xs text-[#dce6f7] whitespace-pre-line">
               {latestCloudPublished.releaseNotes}
             </p>
             {latestCloudPublished.changes.length > 0 && (
-              <ul className="list-disc list-inside text-xs text-[#aeb6c4] space-y-0.5">
+              <ul className="list-disc list-inside text-xs text-[#b8c7e3] space-y-0.5">
                 {latestCloudPublished.changes.map((c, idx) => (
                   <li key={idx}>{c}</li>
                 ))}
@@ -486,17 +496,17 @@ export function UpdatesView({
                 onClick={handleRequestUpdate}
                 className="px-3 py-1.5 rounded-md bg-[#c7ff55] hover:bg-[#d6ff7d] text-[#111507] text-xs font-bold cursor-pointer"
               >
-                Terapkan Pembaruan Sekarang
+                {t('updates.applyNow')}
               </button>
               {latestCloudPublished.packageUrl && (
                 <a
                   href={latestCloudPublished.packageUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="px-3 py-1.5 rounded-md bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-white inline-flex items-center gap-1.5"
+                  className="px-3 py-1.5 rounded-md bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-white inline-flex items-center gap-1.5"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
-                  Buka Tautan Build
+                  {t('updates.openBuildLink')}
                 </a>
               )}
             </div>
@@ -505,31 +515,29 @@ export function UpdatesView({
 
         {/* Unsaved Session Warning before Reload */}
         {confirmReload && (
-          <div className="bg-[#181410] border border-amber-500/50 rounded-lg p-3.5 flex flex-wrap items-center justify-between gap-3">
+          <div className="bg-[#1a1714] border border-amber-500/50 rounded-lg p-3.5 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-start gap-2.5 text-xs text-amber-100">
               <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
               <div>
-                <div className="font-bold">Muat ulang untuk menerapkan pembaruan?</div>
-                <p className="text-amber-200/80 mt-0.5">
-                  Video aktif atau daftar hasil ekspor di memori sesi ini akan dibersihkan saat halaman dimuat ulang. Pastikan klip penting sudah diunduh terlebih dahulu.
-                </p>
+                <div className="font-bold">{t('updates.reloadTitle')}</div>
+                <p className="text-amber-200/80 mt-0.5">{t('updates.reloadDesc')}</p>
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
                 onClick={() => setConfirmReload(false)}
-                className="px-3 py-1.5 rounded-md bg-[#181c27] border border-[#2d3548] text-xs font-semibold text-[#cbd2de] cursor-pointer"
+                className="px-3 py-1.5 rounded-md bg-[#16264d] border border-[#2a4173] text-xs font-semibold text-[#dce6f7] cursor-pointer"
               >
-                Batal
+                {t('updates.cancel')}
               </button>
               <button
                 type="button"
                 onClick={applyAppUpdateReload}
-                className="px-3.5 py-1.5 rounded-md bg-[#ff5436] hover:bg-[#ff6b52] text-xs font-bold text-white inline-flex items-center gap-1.5 cursor-pointer"
+                className="px-3.5 py-1.5 rounded-md bg-[#ff6b00] hover:bg-[#ff8224] text-xs font-bold text-white inline-flex items-center gap-1.5 cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                Lanjutkan Update
+                {t('updates.continueUpdate')}
               </button>
             </div>
           </div>
@@ -546,7 +554,7 @@ export function UpdatesView({
             className={`rounded-lg border p-3.5 space-y-2 ${
               serverHasNewer
                 ? 'bg-[#171d12] border-[#c7ff55]/45'
-                : 'bg-[#0d1017] border-[#1e2432]'
+                : 'bg-[#0c1733] border-[#1e3159]'
             }`}
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -558,21 +566,21 @@ export function UpdatesView({
                 />
                 {checkResult.updateAvailable ? (
                   <span>
-                    Versi terbaru tersedia: <span className="font-mono">v{checkResult.latestVersion}</span>
+                    {t('updates.newVersionAvail')} <span className="font-mono">v{checkResult.latestVersion}</span>
                   </span>
                 ) : (
                   <span>
-                    Aplikasi sudah menggunakan versi aktif (<span className="font-mono">v{CLIENT_APP_VERSION}</span>).
+                    {t('updates.upToDate')} (<span className="font-mono">v{CLIENT_APP_VERSION}</span>).
                   </span>
                 )}
               </div>
-              <span className="text-[11px] font-mono tabular-nums text-[#8f98a8]">
-                Diperiksa {formatTimestamp(checkResult.checkedAt)}
+              <span className="text-[11px] font-mono tabular-nums text-[#93a7cc]">
+                {t('updates.checkedAt', { time: formatTimestamp(checkResult.checkedAt, bcp47) })}
               </span>
             </div>
 
             {checkResult.releaseNotes && (
-              <pre className="text-[11.5px] text-[#cbd2de] whitespace-pre-wrap font-sans leading-relaxed bg-[#080a0f] border border-[#1e2432] rounded-md p-2.5">
+              <pre className="text-[11.5px] text-[#dce6f7] whitespace-pre-wrap font-sans leading-relaxed bg-[#070e20] border border-[#1e3159] rounded-md p-2.5">
                 {checkResult.releaseNotes}
               </pre>
             )}
@@ -584,7 +592,7 @@ export function UpdatesView({
                   onClick={handleRequestUpdate}
                   className="px-3 py-1.5 rounded-md bg-[#c7ff55] hover:bg-[#d6ff7d] text-[#111507] text-xs font-bold cursor-pointer"
                 >
-                  Terapkan Versi Server Sekarang
+                  {t('updates.applyServerNow')}
                 </button>
               )}
               {checkResult.releaseUrl && (
@@ -592,10 +600,10 @@ export function UpdatesView({
                   href={checkResult.releaseUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="px-3 py-1.5 rounded-md bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-white inline-flex items-center gap-1.5"
+                  className="px-3 py-1.5 rounded-md bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-white inline-flex items-center gap-1.5"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
-                  Buka Halaman Rilis GitHub
+                  {t('updates.openGithubRelease')}
                 </a>
               )}
             </div>
@@ -604,78 +612,78 @@ export function UpdatesView({
 
         {/* Environment Summary Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-1">
-          <div className="bg-[#0d1017] border border-[#1e2432] rounded-lg p-3">
-            <div className="text-[11px] text-[#8f98a8]">Penyimpanan Update Firestore</div>
+          <div className="bg-[#0c1733] border border-[#1e3159] rounded-lg p-3">
+            <div className="text-[11px] text-[#93a7cc]">{t('updates.firestoreStorage')}</div>
             <div className="text-xs font-bold text-white mt-0.5 truncate" title={firestoreDatabaseId}>
               {firestoreStatus.offline
                 ? 'Offline'
                 : firestoreStatus.reachable
-                  ? `Terhubung · ${firestoreProjectId}`
-                  : 'Memeriksa…'}
+                  ? t('updates.connected', { project: firestoreProjectId })
+                  : t('updates.checking')}
             </div>
             <div className="text-[10.5px] text-[#c7ff55] font-mono truncate mt-0.5">
-              {publishedReleases.length} rilis terbit
-              {isDeveloperAdmin ? ` · ${adminReleases.filter((r) => r.status === 'developing').length} draft dev` : ''}
+              {t('updates.publishedCount', { count: publishedReleases.length })}
+              {isDeveloperAdmin ? ` · ${adminReleases.filter((r) => r.status === 'developing').length} draft` : ''}
             </div>
           </div>
-          <div className="bg-[#0d1017] border border-[#1e2432] rounded-lg p-3">
-            <div className="text-[11px] text-[#8f98a8]">Aturan Penulisan Versi</div>
+          <div className="bg-[#0c1733] border border-[#1e3159] rounded-lg p-3">
+            <div className="text-[11px] text-[#93a7cc]">{t('updates.versionRules')}</div>
             <div className="text-xs font-bold text-white mt-0.5 font-mono">
               Minor +0.0.1 · Major +0.1.0
             </div>
-            <div className="text-[10.5px] text-[#8f98a8] font-mono mt-0.5">
-              Berikutnya: v{computeNextVersion(highestKnownVersion, 'minor')} / v
+            <div className="text-[10.5px] text-[#93a7cc] font-mono mt-0.5">
+              {t('updates.nextLabel')} v{computeNextVersion(highestKnownVersion, 'minor')} / v
               {computeNextVersion(highestKnownVersion, 'major')}
             </div>
           </div>
-          <div className="bg-[#0d1017] border border-[#1e2432] rounded-lg p-3">
-            <div className="text-[11px] text-[#8f98a8]">Layanan Gemini AI</div>
+          <div className="bg-[#0c1733] border border-[#1e3159] rounded-lg p-3">
+            <div className="text-[11px] text-[#93a7cc]">{t('updates.geminiService')}</div>
             <div className="text-xs font-bold text-white mt-0.5">
-              {versionInfo ? (versionInfo.aiConfigured ? 'Aktif & Siap' : 'Belum Dikonfigurasi') : 'Memeriksa…'}
+              {versionInfo ? (versionInfo.aiConfigured ? t('updates.activeReady') : t('updates.notConfigured')) : t('updates.checking')}
             </div>
           </div>
-          <div className="bg-[#0d1017] border border-[#1e2432] rounded-lg p-3">
-            <div className="text-[11px] text-[#8f98a8]">Impor Stream YouTube</div>
+          <div className="bg-[#0c1733] border border-[#1e3159] rounded-lg p-3">
+            <div className="text-[11px] text-[#93a7cc]">{t('updates.ytStream')}</div>
             <div className="text-xs font-bold text-white mt-0.5">
               {versionInfo
                 ? versionInfo.ytDlpReady
-                  ? 'yt-dlp Aktif'
-                  : 'Mode Upload Lokal (Web)'
-                : 'Memeriksa…'}
+                  ? 'yt-dlp Ready'
+                  : t('updates.webUploadMode')
+                : t('updates.checking')}
             </div>
           </div>
         </div>
       </section>
 
       {/* Firestore Cloud Development & Release Staging */}
-      <section className="bg-[#11141c] border border-[#1e2432] rounded-xl p-5 space-y-4">
+      <section className="bg-[#101d3d] border border-[#1e3159] rounded-xl p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-start gap-2.5">
             <Cloud className="w-4 h-4 text-[#c7ff55] shrink-0 mt-0.5" />
             <div>
               <h2 className="text-sm font-bold text-white">
-                Penyimpanan Cloud Update Aplikasi (Firestore)
+                {t('updates.cloudStagingTitle')}
               </h2>
-              <p className="text-xs text-[#8f98a8] mt-0.5">
-                Simpan build &amp; catatan fitur yang sedang di-develop untuk update selanjutnya. Minor otomatis bertambah <code className="text-[#cbd2de]">+0.0.1</code>, Major bertambah <code className="text-[#cbd2de]">+0.1.0</code>.
+              <p className="text-xs text-[#93a7cc] mt-0.5">
+                {t('updates.cloudStagingDesc')}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             {fbUser ? (
-              <div className="flex items-center gap-2 bg-[#0d1017] border border-[#2d3548] rounded-lg px-2.5 py-1.5">
+              <div className="flex items-center gap-2 bg-[#0c1733] border border-[#2a4173] rounded-lg px-2.5 py-1.5">
                 <div className="text-right">
                   <div className="text-[11px] font-bold text-white leading-tight">
-                    {fbUser.displayName || 'Akun Google'}
+                    {fbUser.displayName || 'Google'}
                   </div>
-                  <div className="text-[10px] text-[#8f98a8] leading-tight">{fbUser.email}</div>
+                  <div className="text-[10px] text-[#93a7cc] leading-tight">{fbUser.email}</div>
                 </div>
                 <button
                   type="button"
                   onClick={onSignOutGoogle}
-                  title="Keluar akun Google"
-                  className="p-1.5 rounded-md bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-[#cbd2de] hover:text-white cursor-pointer"
+                  title={t('updates.signOutTitle')}
+                  className="p-1.5 rounded-md bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-[#dce6f7] hover:text-white cursor-pointer"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                 </button>
@@ -685,10 +693,10 @@ export function UpdatesView({
                 type="button"
                 disabled={!authReady}
                 onClick={onSignInGoogle}
-                className="px-3.5 py-2 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-white inline-flex items-center gap-1.5 disabled:opacity-40 cursor-pointer"
+                className="px-3.5 py-2 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-white inline-flex items-center gap-1.5 disabled:opacity-40 cursor-pointer"
               >
                 <LogIn className="w-3.5 h-3.5 text-[#c7ff55]" />
-                Masuk Google Developer
+                {t('updates.signInGoogle')}
               </button>
             )}
           </div>
@@ -713,41 +721,41 @@ export function UpdatesView({
         )}
 
         {fbUser && !isDeveloperAdmin && (
-          <div className="bg-[#0d1017] border border-[#2d3548] rounded-lg p-3 text-xs text-[#cbd2de]">
-            Akun <strong>{fbUser.email}</strong> hanya memiliki akses baca untuk rilis yang sudah dipublikasikan. Pengelolaan paket update dalam pengembangan khusus untuk akun pengembang ({DEVELOPER_ADMIN_EMAIL}).
+          <div className="bg-[#0c1733] border border-[#2a4173] rounded-lg p-3 text-xs text-[#dce6f7]">
+            {t('updates.readOnlyNotice', { email: fbUser.email || '', admin: DEVELOPER_ADMIN_EMAIL })}
           </div>
         )}
 
         {isDeveloperAdmin && (
-          <div className="bg-[#0d1017] border border-[#1e2432] rounded-xl p-4 space-y-3.5">
+          <div className="bg-[#0c1733] border border-[#1e3159] rounded-xl p-4 space-y-3.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-xs font-bold text-white">
                 {editingReleaseId
-                  ? `Edit Rilis Cloud (${editingReleaseId})`
-                  : 'Catat & Simpan Update yang Sedang Dikembangkan'}
+                  ? t('updates.composerEdit', { id: editingReleaseId })
+                  : t('updates.composerTitle')}
               </div>
               {editingReleaseId && (
                 <button
                   type="button"
                   onClick={() => resetComposer('minor')}
-                  className="text-[11px] font-semibold text-[#8f98a8] hover:text-white cursor-pointer"
+                  className="text-[11px] font-semibold text-[#93a7cc] hover:text-white cursor-pointer"
                 >
-                  Batal Edit
+                  {t('updates.cancelEdit')}
                 </button>
               )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
               <div>
-                <label className="block text-[11px] text-[#b7c0cf] mb-1">Jenis Update</label>
-                <div className="grid grid-cols-2 gap-1 p-1 bg-[#080a0f] border border-[#2d3548] rounded-lg">
+                <label className="block text-[11px] text-[#b8c7e3] mb-1">{t('updates.updateType')}</label>
+                <div className="grid grid-cols-2 gap-1 p-1 bg-[#070e20] border border-[#2a4173] rounded-lg">
                   <button
                     type="button"
                     onClick={() => setUpdateType('minor')}
                     className={`py-1.5 px-2 rounded text-[11px] font-bold cursor-pointer transition-colors ${
                       updateType === 'minor'
-                        ? 'bg-[#181c27] text-[#c7ff55] border border-[#2d3548]'
-                        : 'text-[#8f98a8] hover:text-white'
+                        ? 'bg-[#16264d] text-[#c7ff55] border border-[#2a4173]'
+                        : 'text-[#93a7cc] hover:text-white'
                     }`}
                   >
                     Minor (+0.0.1)
@@ -757,8 +765,8 @@ export function UpdatesView({
                     onClick={() => setUpdateType('major')}
                     className={`py-1.5 px-2 rounded text-[11px] font-bold cursor-pointer transition-colors ${
                       updateType === 'major'
-                        ? 'bg-[#181c27] text-[#ff5436] border border-[#2d3548]'
-                        : 'text-[#8f98a8] hover:text-white'
+                        ? 'bg-[#16264d] text-[#ff6b00] border border-[#2a4173]'
+                        : 'text-[#93a7cc] hover:text-white'
                     }`}
                   >
                     Major (+0.1.0)
@@ -767,34 +775,34 @@ export function UpdatesView({
               </div>
 
               <div>
-                <label className="block text-[11px] text-[#b7c0cf] mb-1">Versi Target</label>
+                <label className="block text-[11px] text-[#b8c7e3] mb-1">{t('updates.targetVersion')}</label>
                 <input
                   type="text"
                   value={releaseVersion}
                   onChange={(e) => setReleaseVersion(e.target.value)}
                   placeholder="1.5.1"
-                  className="w-full bg-[#080a0f] text-white font-mono border border-[#2d3548] rounded-lg px-2.5 py-2 text-xs focus:outline-none focus:border-[#ff5436]"
+                  className="w-full bg-[#070e20] text-white font-mono border border-[#2a4173] rounded-lg px-2.5 py-2 text-xs focus:outline-none focus:border-[#ff6b00]"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] text-[#b7c0cf] mb-1">Status Pengembangan</label>
+                <label className="block text-[11px] text-[#b8c7e3] mb-1">{t('updates.devStatus')}</label>
                 <select
                   value={releaseStatus}
                   onChange={(e) => setReleaseStatus(e.target.value as ReleaseStatus)}
-                  className="w-full bg-[#080a0f] text-white border border-[#2d3548] rounded-lg px-2.5 py-2 text-xs"
+                  className="w-full bg-[#070e20] text-white border border-[#2a4173] rounded-lg px-2.5 py-2 text-xs"
                 >
-                  <option value="developing">Sedang Dikembangkan (Draft)</option>
-                  <option value="published">Publikasikan Update (Rilis)</option>
+                  <option value="developing">{t('updates.statusDeveloping')}</option>
+                  <option value="published">{t('updates.statusPublished')}</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-[11px] text-[#b7c0cf] mb-1">Target Platform</label>
+                <label className="block text-[11px] text-[#b8c7e3] mb-1">{t('updates.platformTarget')}</label>
                 <select
                   value={buildTarget}
                   onChange={(e) => setBuildTarget(e.target.value)}
-                  className="w-full bg-[#080a0f] text-white border border-[#2d3548] rounded-lg px-2.5 py-2 text-xs"
+                  className="w-full bg-[#070e20] text-white border border-[#2a4173] rounded-lg px-2.5 py-2 text-xs"
                 >
                   <option value="web">Web App (Studio)</option>
                   <option value="desktop">Desktop App</option>
@@ -805,72 +813,72 @@ export function UpdatesView({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div>
-                <label className="block text-[11px] text-[#b7c0cf] mb-1">Judul Pembaruan</label>
+                <label className="block text-[11px] text-[#b8c7e3] mb-1">{t('updates.releaseTitleLabel')}</label>
                 <input
                   type="text"
                   value={releaseTitle}
                   onChange={(e) => setReleaseTitle(e.target.value)}
-                  placeholder="Contoh: Optimasi Render 9:16 & Preset Subtitle Baru"
-                  className="w-full bg-[#080a0f] text-white border border-[#2d3548] rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#ff5436]"
+                  placeholder="Render 9:16 + Multi-Language..."
+                  className="w-full bg-[#070e20] text-white border border-[#2a4173] rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#ff6b00]"
                 />
               </div>
               <div>
-                <label className="block text-[11px] text-[#b7c0cf] mb-1">
-                  Tautan Paket Build / Repo (Opsional)
+                <label className="block text-[11px] text-[#b8c7e3] mb-1">
+                  {t('updates.packageUrlLabel')}
                 </label>
                 <input
                   type="url"
                   value={packageUrl}
                   onChange={(e) => setPackageUrl(e.target.value)}
                   placeholder="https://github.com/..."
-                  className="w-full bg-[#080a0f] text-white border border-[#2d3548] rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#ff5436]"
+                  className="w-full bg-[#070e20] text-white border border-[#2a4173] rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#ff6b00]"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div>
-                <label className="block text-[11px] text-[#b7c0cf] mb-1">
-                  Catatan Pengembangan (Release Notes)
+                <label className="block text-[11px] text-[#b8c7e3] mb-1">
+                  {t('updates.releaseNotesLabel')}
                 </label>
                 <textarea
                   rows={3}
                   value={releaseNotes}
                   onChange={(e) => setReleaseNotes(e.target.value)}
-                  placeholder="Ringkasan apa yang sedang dikembangkan pada versi ini…"
-                  className="w-full bg-[#080a0f] text-white border border-[#2d3548] rounded-lg p-2.5 text-xs focus:outline-none focus:border-[#ff5436]"
+                  placeholder="..."
+                  className="w-full bg-[#070e20] text-white border border-[#2a4173] rounded-lg p-2.5 text-xs focus:outline-none focus:border-[#ff6b00]"
                 />
               </div>
               <div>
-                <label className="block text-[11px] text-[#b7c0cf] mb-1">
-                  Poin Perubahan (1 baris per poin, maks 20)
+                <label className="block text-[11px] text-[#b8c7e3] mb-1">
+                  {t('updates.changesLabel')}
                 </label>
                 <textarea
                   rows={3}
                   value={changesText}
                   onChange={(e) => setChangesText(e.target.value)}
-                  placeholder={'Perbaikan sinkronisasi audio\nPenambahan filter warna video\nOptimasi ekspor ZIP'}
-                  className="w-full bg-[#080a0f] text-white border border-[#2d3548] rounded-lg p-2.5 text-xs focus:outline-none focus:border-[#ff5436]"
+                  placeholder="- Feature A&#10;- Fix B"
+                  className="w-full bg-[#070e20] text-white border border-[#2a4173] rounded-lg p-2.5 text-xs focus:outline-none focus:border-[#ff6b00]"
                 />
               </div>
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-[11px] text-[#8f98a8]">
-                Basis versi tertinggi saat ini: <strong className="font-mono text-white">v{highestKnownVersion}</strong>
+              <span className="text-[11px] text-[#93a7cc]">
+                {t('updates.highestBasis')} <strong className="font-mono text-white">v{highestKnownVersion}</strong>
               </span>
               <button
                 type="button"
                 disabled={savingRelease}
                 onClick={handleSaveCloudRelease}
-                className="px-4 py-2 rounded-lg bg-[#ff5436] hover:bg-[#ff6b52] disabled:opacity-40 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                className="px-4 py-2 rounded-lg bg-[#ff6b00] hover:bg-[#ff8224] disabled:opacity-40 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
               >
                 <CloudUpload className="w-3.5 h-3.5" />
                 {savingRelease
-                  ? 'Menyimpan…'
+                  ? t('updates.saving')
                   : editingReleaseId
-                    ? 'Perbarui di Firestore'
-                    : 'Simpan Update ke Firestore'}
+                    ? t('updates.updateFirestoreBtn')
+                    : t('updates.saveFirestoreBtn')}
               </button>
             </div>
           </div>
@@ -881,10 +889,10 @@ export function UpdatesView({
           const displayedReleases = isDeveloperAdmin ? adminReleases : publishedReleases;
           if (!displayedReleases.length) {
             return (
-              <div className="border border-dashed border-[#2d3548] rounded-lg p-4 text-xs text-[#8f98a8] bg-[#0d1017]">
+              <div className="border border-dashed border-[#2a4173] rounded-lg p-4 text-xs text-[#93a7cc] bg-[#0c1733]">
                 {isDeveloperAdmin
-                  ? 'Belum ada build pengembangan atau rilis di Firestore. Gunakan formulir di atas untuk menyimpan draft update v1.5.1 (Minor +0.0.1) atau v1.6.0 (Major +0.1.0).'
-                  : 'Belum ada rilis pembaruan baru yang dipublikasikan di Firestore saat ini.'}
+                  ? t('updates.emptyReleasesAdmin')
+                  : t('updates.emptyReleasesPublic')}
               </div>
             );
           }
@@ -893,21 +901,21 @@ export function UpdatesView({
             <div className="space-y-2.5">
               <div className="text-xs font-bold text-white">
                 {isDeveloperAdmin
-                  ? `Daftar Cloud Pengembangan & Rilis (${displayedReleases.length})`
-                  : `Rilis Terpublikasi di Cloud (${displayedReleases.length})`}
+                  ? t('updates.listAdmin', { count: displayedReleases.length })
+                  : t('updates.listPublic', { count: displayedReleases.length })}
               </div>
               <div className="space-y-2">
                 {displayedReleases.map((rel) => (
                   <article
                     key={rel.id}
-                    className="bg-[#0d1017] border border-[#1e2432] rounded-lg p-3.5 space-y-2"
+                    className="bg-[#0c1733] border border-[#1e3159] rounded-lg p-3.5 space-y-2"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex flex-wrap items-center gap-2 min-w-0">
                         <span className="font-mono text-xs font-extrabold text-[#c7ff55]">
                           v{rel.version}
                         </span>
-                        <span className="text-[11px] font-mono text-[#8f98a8]">
+                        <span className="text-[11px] font-mono text-[#93a7cc]">
                           ({rel.updateType === 'major' ? 'Major +0.1.0' : 'Minor +0.0.1'})
                         </span>
                         <span
@@ -917,14 +925,14 @@ export function UpdatesView({
                               : 'bg-amber-950/40 border-amber-500/40 text-amber-300'
                           }`}
                         >
-                          {rel.status === 'published' ? 'Dirilis' : 'Sedang Dikembangkan'}
+                          {rel.status === 'published' ? t('updates.badgePublished') : t('updates.badgeDeveloping')}
                         </span>
                         <h3 className="text-xs font-bold text-white truncate">{rel.title}</h3>
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="text-[10.5px] font-mono text-[#8f98a8] mr-1">
-                          {formatTimestamp(rel.updatedAtMs)}
+                        <span className="text-[10.5px] font-mono text-[#93a7cc] mr-1">
+                          {formatTimestamp(rel.updatedAtMs, bcp47)}
                         </span>
                         {isDeveloperAdmin && (
                           <>
@@ -935,17 +943,17 @@ export function UpdatesView({
                                   setCloudError('');
                                   try {
                                     await publishAppReleaseInFirestore(rel.id);
-                                    setCloudNotice(`v${rel.version} berhasil dipublikasikan!`);
+                                    setCloudNotice(`v${rel.version} published!`);
                                   } catch (err) {
                                     setCloudError(
-                                      err instanceof Error ? err.message : 'Gagal mempublikasikan rilis.'
+                                      err instanceof Error ? err.message : 'Publish failed.'
                                     );
                                   }
                                 }}
                                 className="px-2 py-1 rounded bg-[#c7ff55] hover:bg-[#d6ff7d] text-[#111507] text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
                               >
                                 <Rocket className="w-3 h-3" />
-                                Terbitkan
+                                {t('updates.publishBtn')}
                               </button>
                             )}
                             <button
@@ -961,8 +969,8 @@ export function UpdatesView({
                                 setPackageUrl(rel.packageUrl);
                                 setBuildTarget(rel.buildTarget);
                               }}
-                              title="Edit rilis"
-                              className="p-1.5 rounded bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-[#cbd2de] hover:text-white cursor-pointer"
+                              title="Edit"
+                              className="p-1.5 rounded bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-[#dce6f7] hover:text-white cursor-pointer"
                             >
                               <Pencil className="w-3 h-3" />
                             </button>
@@ -972,15 +980,15 @@ export function UpdatesView({
                                 setCloudError('');
                                 try {
                                   await deleteAppReleaseFromFirestore(rel.id);
-                                  setCloudNotice(`Rilis v${rel.version} dihapus dari Firestore.`);
+                                  setCloudNotice(`v${rel.version} deleted.`);
                                 } catch (err) {
                                   setCloudError(
-                                    err instanceof Error ? err.message : 'Gagal menghapus rilis.'
+                                    err instanceof Error ? err.message : 'Delete failed.'
                                   );
                                 }
                               }}
-                              title="Hapus dari Firestore"
-                              className="p-1.5 rounded bg-[#181c27] hover:bg-red-950/50 border border-[#2d3548] text-[#aeb6c4] hover:text-red-300 cursor-pointer"
+                              title="Delete"
+                              className="p-1.5 rounded bg-[#16264d] hover:bg-red-950/50 border border-[#2a4173] text-[#b8c7e3] hover:text-red-300 cursor-pointer"
                             >
                               <Trash2 className="w-3 h-3" />
                             </button>
@@ -990,11 +998,11 @@ export function UpdatesView({
                     </div>
 
                     {rel.releaseNotes && (
-                      <p className="text-xs text-[#aeb6c4] whitespace-pre-line">{rel.releaseNotes}</p>
+                      <p className="text-xs text-[#b8c7e3] whitespace-pre-line">{rel.releaseNotes}</p>
                     )}
 
                     {rel.changes.length > 0 && (
-                      <ul className="list-disc list-inside text-[11.5px] text-[#cbd2de] space-y-0.5">
+                      <ul className="list-disc list-inside text-[11.5px] text-[#dce6f7] space-y-0.5">
                         {rel.changes.map((ch, idx) => (
                           <li key={idx}>{ch}</li>
                         ))}
@@ -1021,40 +1029,38 @@ export function UpdatesView({
       </section>
 
       {/* Optional External GitHub Release Check */}
-      <section className="bg-[#11141c] border border-[#1e2432] rounded-xl p-5 space-y-3">
+      <section className="bg-[#101d3d] border border-[#1e3159] rounded-xl p-5 space-y-3">
         <div>
-          <h2 className="text-sm font-bold text-white">Cek Rilis dari Repositori GitHub (Opsional)</h2>
-          <p className="text-xs text-[#8f98a8] mt-0.5">
-            Masukkan repositori rilis dengan format <code className="text-[#cbd2de]">pemilik/nama-repo</code> jika Anda merilis build melalui GitHub Releases.
-          </p>
+          <h2 className="text-sm font-bold text-white">{t('updates.githubSectionTitle')}</h2>
+          <p className="text-xs text-[#93a7cc] mt-0.5">{t('updates.githubSectionDesc')}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <input
             type="text"
             value={githubRepo}
             onChange={(e) => setGithubRepo(e.target.value)}
-            placeholder="Contoh: username/auto-clipper-studio"
-            className="flex-1 min-w-[220px] bg-[#080a0f] text-[#f3f5f8] border border-[#2d3548] rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#ff5436]"
+            placeholder="owner/auto-clipper-studio"
+            className="flex-1 min-w-[220px] bg-[#070e20] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#ff6b00]"
           />
           <button
             type="button"
             disabled={checking}
             onClick={() => handleCheckUpdates(true)}
-            className="px-4 py-2 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-white disabled:opacity-40 cursor-pointer"
+            className="px-4 py-2 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-white disabled:opacity-40 cursor-pointer"
           >
-            {checking ? 'Memeriksa…' : 'Cek Rilis GitHub'}
+            {checking ? t('updates.checking') : t('updates.checkGithubBtn')}
           </button>
         </div>
       </section>
 
       {/* Changelog */}
-      <section className="bg-[#11141c] border border-[#1e2432] rounded-xl p-5 space-y-3.5">
-        <h2 className="text-sm font-bold text-white">Riwayat Pembaruan (Changelog)</h2>
+      <section className="bg-[#101d3d] border border-[#1e3159] rounded-xl p-5 space-y-3.5">
+        <h2 className="text-sm font-bold text-white">{t('updates.changelogTitle')}</h2>
         <div className="space-y-3">
           {CHANGELOG.map((rel) => (
             <article
               key={rel.version}
-              className="bg-[#0d1017] border border-[#1e2432] rounded-lg p-3.5 space-y-2"
+              className="bg-[#0c1733] border border-[#1e3159] rounded-lg p-3.5 space-y-2"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2.5">
@@ -1063,9 +1069,9 @@ export function UpdatesView({
                   </span>
                   <h3 className="text-xs font-bold text-white">{rel.title}</h3>
                 </div>
-                <span className="text-[11px] text-[#8f98a8]">{rel.date}</span>
+                <span className="text-[11px] text-[#93a7cc]">{rel.date}</span>
               </div>
-              <ul className="list-disc list-inside space-y-1 text-xs text-[#aeb6c4]">
+              <ul className="list-disc list-inside space-y-1 text-xs text-[#b8c7e3]">
                 {rel.items.map((item, idx) => (
                   <li key={idx}>{item}</li>
                 ))}

@@ -115,7 +115,7 @@ export async function downloadAllProjectsZip(
       existing.items.push(rec);
     } else {
       grouped.set(key, {
-        name: rec.projectName || rec.sourceLabel || 'Projek Auto Clipper',
+        name: rec.projectName || rec.sourceLabel || 'Projek Paijo Clip',
         items: [rec],
       });
     }

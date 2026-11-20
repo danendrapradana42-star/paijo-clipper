@@ -18,6 +18,7 @@ import { ExportsView } from './components/ExportsView';
 import { HomeView } from './components/HomeView';
 import { StudioView } from './components/StudioView';
 import { CLIENT_APP_VERSION, UpdatesView } from './components/UpdatesView';
+import { LanguageSelector, useTranslation } from './i18n/LanguageContext';
 import type {
   AppView,
   AudioEnvelopeData,
@@ -128,6 +129,7 @@ function parseClipLengthRange(val: string): { minDur: number; maxDur: number } {
 }
 
 export default function App() {
+  const { locale, t } = useTranslation();
   const saved = loadSavedPrefs();
   const videoRef = useRef<HTMLVideoElement>(null);
   const objectUrlRef = useRef<string | null>(null);
@@ -155,7 +157,7 @@ export default function App() {
   const [cues, setCues] = useState<SubtitleCue[]>([]);
   const [transcriptEditorText, setTranscriptEditorText] = useState('');
   const [aiTranscribeConsent, setAiTranscribeConsent] = useState(false);
-  const [aiTranscribeLang, setAiTranscribeLang] = useState('id');
+  const [aiTranscribeLang, setAiTranscribeLang] = useState<string>(() => locale);
   const [aiTranscribing, setAiTranscribing] = useState(false);
   const [transcribeProgressPct, setTranscribeProgressPct] = useState(0);
   const [transcribeElapsedSec, setTranscribeElapsedSec] = useState(0);
@@ -181,8 +183,8 @@ export default function App() {
   const [activeProjectId, setActiveProjectId] = useState(() => `proj-${Date.now()}`);
   const [exporting, setExporting] = useState(false);
   const [exportProgressPct, setExportProgressPct] = useState(0);
-  const [exportProgressLabel, setExportProgressLabel] = useState('Siap');
-  const [statusMessage, setStatusMessage] = useState('Pilih file video di Beranda untuk memulai.');
+  const [exportProgressLabel, setExportProgressLabel] = useState('');
+  const [statusMessage, setStatusMessage] = useState('');
   const [latestDownloads, setLatestDownloads] = useState<
     Array<{ url: string; filename: string; rangeText: string; ext: string }>
   >([]);
@@ -745,6 +747,7 @@ export default function App() {
           minDur,
           maxDur,
           limit: clipLimit,
+          uiLocale: locale,
         }),
       });
       const data = await res.json();
@@ -832,7 +835,7 @@ export default function App() {
 
     const totalClipDur = chosen.reduce((acc, c) => acc + Math.max(0.5, c.end - c.start), 0);
     let doneDur = 0;
-    const projectName = activeLabel || activeFile?.name || 'Projek Auto Clipper';
+    const projectName = activeLabel || activeFile?.name || 'Projek Paijo Clip';
     const stem = projectName
       .replace(/\.[^.]+$/, '')
       .replace(/[\\/:*?"<>|]/g, '-');
@@ -1067,25 +1070,25 @@ export default function App() {
   };
 
   const breadcrumbMap: Record<AppView, [string, string]> = {
-    home: ['Beranda', 'Upload video lokal, batch queue, atau link YouTube'],
-    aivideo: ['Video AI Otomatis', 'Naskah, visual 9:16, narasi suara AI, dan render lokal'],
+    home: [t('nav.home'), t('crumb.homeSub')],
+    aivideo: [t('nav.aiVideo'), t('crumb.aiVideoSub')],
     studio: [
       studioTab === 'style'
-        ? 'Font & Gaya Subtitle'
+        ? t('nav.style')
         : studioTab === 'export'
-          ? 'Framing & Ekspor 9:16'
-          : 'Studio Editor 9:16',
-      activeLabel || 'Atur subtitle, potongan klip, dan pratinjau',
+          ? t('nav.export')
+          : t('nav.studio'),
+      activeLabel || t('crumb.studioFallback'),
     ],
-    exports: ['Hasil Ekspor', `${exportedRecords.length} klip selesai di sesi ini`],
-    updates: ['Versi & Pembaruan', `Auto Clipper Studio v${CLIENT_APP_VERSION}`],
+    exports: [t('nav.exports'), t('crumb.exportsSub', { count: exportedRecords.length })],
+    updates: [t('nav.updates'), `Paijo Clip v${CLIENT_APP_VERSION}`],
   };
 
   const [crumbTitle, crumbSub] = breadcrumbMap[view];
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-[#08090c] text-[#f3f5f8] grid grid-cols-1 lg:grid-cols-[248px_minmax(0,1fr)]">
+      <div className="min-h-screen bg-[#070e20] text-[#f1f5fc] grid grid-cols-1 lg:grid-cols-[248px_minmax(0,1fr)]">
         {/* Hidden shared media element for preview & export */}
         <video
           ref={videoRef}
@@ -1098,34 +1101,37 @@ export default function App() {
         {mobileMenuOpen && (
           <div
             onClick={() => setMobileMenuOpen(false)}
-            className="fixed inset-0 bg-black/65 z-40 lg:hidden"
+            className="fixed inset-0 bg-[#040915]/75 z-40 lg:hidden"
           />
         )}
 
         {/* Sidebar Navigation */}
         <aside
-          className={`fixed lg:sticky top-0 left-0 h-screen w-[248px] bg-[#0b0d12] border-r border-[#1e2432] flex flex-col p-4 z-50 transition-transform duration-200 ${
+          className={`fixed lg:sticky top-0 left-0 h-screen w-[248px] bg-[#0a1329] border-r border-[#1e3159] flex flex-col p-4 z-50 transition-transform duration-200 ${
             mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
           }`}
         >
           <div className="flex items-center justify-between px-2 pb-5">
             <div className="flex items-center gap-2.5 font-extrabold text-base tracking-tight text-white whitespace-nowrap">
-              <span className="w-7 h-7 rounded-lg bg-[#ff5436] text-white grid place-items-center text-xs font-extrabold">
-                ▶
-              </span>
-              Auto Clipper
+              <img
+                src="/assets/aistudio/paijoclip-icon_f8577a46.png"
+                alt="Paijo Clip logo"
+                referrerPolicy="no-referrer"
+                className="w-7 h-9 object-contain shrink-0 rounded-md"
+              />
+              <span>Paijo Clip</span>
             </div>
             <button
               type="button"
               onClick={() => setMobileMenuOpen(false)}
-              className="lg:hidden p-1 text-[#8f98a8] hover:text-white"
-              aria-label="Tutup menu"
+              className="lg:hidden p-1 text-[#93a7cc] hover:text-white"
+              aria-label={t('nav.closeMenu')}
             >
               <X className="w-4 h-4" />
             </button>
           </div>
 
-          <nav aria-label="Navigasi Studio" className="space-y-1 flex-1">
+          <nav aria-label="Studio Navigation" className="space-y-1 flex-1">
             <button
               type="button"
               onClick={() => {
@@ -1134,12 +1140,12 @@ export default function App() {
               }}
               className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13px] font-semibold transition-colors cursor-pointer ${
                 view === 'home'
-                  ? 'bg-[#181c27] text-white border border-[#2d3548]'
-                  : 'text-[#8f98a8] hover:bg-[#11141c] hover:text-white border border-transparent'
+                  ? 'bg-[#16264d] text-white border border-[#2a4173]'
+                  : 'text-[#93a7cc] hover:bg-[#101d3d] hover:text-white border border-transparent'
               }`}
             >
-              <LayoutGrid className={`w-4 h-4 ${view === 'home' ? 'text-[#ff5436]' : ''}`} />
-              <span>Beranda</span>
+              <LayoutGrid className={`w-4 h-4 shrink-0 ${view === 'home' ? 'text-[#ff6b00]' : ''}`} />
+              <span className="truncate">{t('nav.home')}</span>
             </button>
 
             <button
@@ -1150,12 +1156,12 @@ export default function App() {
               }}
               className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13px] font-semibold transition-colors cursor-pointer ${
                 view === 'aivideo'
-                  ? 'bg-[#181c27] text-white border border-[#2d3548]'
-                  : 'text-[#8f98a8] hover:bg-[#11141c] hover:text-white border border-transparent'
+                  ? 'bg-[#16264d] text-white border border-[#2a4173]'
+                  : 'text-[#93a7cc] hover:bg-[#101d3d] hover:text-white border border-transparent'
               }`}
             >
-              <Sparkles className={`w-4 h-4 ${view === 'aivideo' ? 'text-[#ff5436]' : ''}`} />
-              <span>Video AI Otomatis</span>
+              <Sparkles className={`w-4 h-4 shrink-0 ${view === 'aivideo' ? 'text-[#ff6b00]' : ''}`} />
+              <span className="truncate">{t('nav.aiVideo')}</span>
             </button>
 
             <button
@@ -1163,14 +1169,14 @@ export default function App() {
               onClick={() => navigateStudio('clips')}
               className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13px] font-semibold transition-colors cursor-pointer ${
                 view === 'studio' && studioTab === 'clips'
-                  ? 'bg-[#181c27] text-white border border-[#2d3548]'
-                  : 'text-[#8f98a8] hover:bg-[#11141c] hover:text-white border border-transparent'
+                  ? 'bg-[#16264d] text-white border border-[#2a4173]'
+                  : 'text-[#93a7cc] hover:bg-[#101d3d] hover:text-white border border-transparent'
               }`}
             >
               <Sliders
-                className={`w-4 h-4 ${view === 'studio' && studioTab === 'clips' ? 'text-[#ff5436]' : ''}`}
+                className={`w-4 h-4 shrink-0 ${view === 'studio' && studioTab === 'clips' ? 'text-[#ff6b00]' : ''}`}
               />
-              <span>Studio Editor 9:16</span>
+              <span className="truncate">{t('nav.studio')}</span>
             </button>
 
             <button
@@ -1178,14 +1184,14 @@ export default function App() {
               onClick={() => navigateStudio('style')}
               className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13px] font-semibold transition-colors cursor-pointer ${
                 view === 'studio' && studioTab === 'style'
-                  ? 'bg-[#181c27] text-white border border-[#2d3548]'
-                  : 'text-[#8f98a8] hover:bg-[#11141c] hover:text-white border border-transparent'
+                  ? 'bg-[#16264d] text-white border border-[#2a4173]'
+                  : 'text-[#93a7cc] hover:bg-[#101d3d] hover:text-white border border-transparent'
               }`}
             >
               <TypeIcon
-                className={`w-4 h-4 ${view === 'studio' && studioTab === 'style' ? 'text-[#ff5436]' : ''}`}
+                className={`w-4 h-4 shrink-0 ${view === 'studio' && studioTab === 'style' ? 'text-[#ff6b00]' : ''}`}
               />
-              <span>Font &amp; Gaya Subtitle</span>
+              <span className="truncate">{t('nav.style')}</span>
             </button>
 
             <button
@@ -1193,14 +1199,14 @@ export default function App() {
               onClick={() => navigateStudio('export')}
               className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13px] font-semibold transition-colors cursor-pointer ${
                 view === 'studio' && studioTab === 'export'
-                  ? 'bg-[#181c27] text-white border border-[#2d3548]'
-                  : 'text-[#8f98a8] hover:bg-[#11141c] hover:text-white border border-transparent'
+                  ? 'bg-[#16264d] text-white border border-[#2a4173]'
+                  : 'text-[#93a7cc] hover:bg-[#101d3d] hover:text-white border border-transparent'
               }`}
             >
               <UserCheck
-                className={`w-4 h-4 ${view === 'studio' && studioTab === 'export' ? 'text-[#ff5436]' : ''}`}
+                className={`w-4 h-4 shrink-0 ${view === 'studio' && studioTab === 'export' ? 'text-[#ff6b00]' : ''}`}
               />
-              <span>Framing &amp; Ekspor</span>
+              <span className="truncate">{t('nav.export')}</span>
             </button>
 
             <button
@@ -1211,13 +1217,13 @@ export default function App() {
               }}
               className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13px] font-semibold transition-colors cursor-pointer ${
                 view === 'exports'
-                  ? 'bg-[#181c27] text-white border border-[#2d3548]'
-                  : 'text-[#8f98a8] hover:bg-[#11141c] hover:text-white border border-transparent'
+                  ? 'bg-[#16264d] text-white border border-[#2a4173]'
+                  : 'text-[#93a7cc] hover:bg-[#101d3d] hover:text-white border border-transparent'
               }`}
             >
-              <Download className={`w-4 h-4 ${view === 'exports' ? 'text-[#ff5436]' : ''}`} />
-              <span>Hasil Ekspor</span>
-              <span className="ml-auto font-mono tabular-nums text-[11px] text-[#8f98a8]">
+              <Download className={`w-4 h-4 shrink-0 ${view === 'exports' ? 'text-[#ff6b00]' : ''}`} />
+              <span className="truncate">{t('nav.exports')}</span>
+              <span className="ml-auto font-mono tabular-nums text-[11px] text-[#93a7cc]">
                 {exportedRecords.length}
               </span>
             </button>
@@ -1230,30 +1236,37 @@ export default function App() {
               }}
               className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13px] font-semibold transition-colors cursor-pointer ${
                 view === 'updates'
-                  ? 'bg-[#181c27] text-white border border-[#2d3548]'
-                  : 'text-[#8f98a8] hover:bg-[#11141c] hover:text-white border border-transparent'
+                  ? 'bg-[#16264d] text-white border border-[#2a4173]'
+                  : 'text-[#93a7cc] hover:bg-[#101d3d] hover:text-white border border-transparent'
               }`}
             >
-              <RefreshCw className={`w-4 h-4 ${view === 'updates' ? 'text-[#ff5436]' : ''}`} />
-              <span>Versi &amp; Update</span>
-              <span className="ml-auto font-mono tabular-nums text-[11px] text-[#8f98a8]">
+              <RefreshCw className={`w-4 h-4 shrink-0 ${view === 'updates' ? 'text-[#ff6b00]' : ''}`} />
+              <span className="truncate">{t('nav.updates')}</span>
+              <span className="ml-auto font-mono tabular-nums text-[11px] text-[#93a7cc]">
                 v{CLIENT_APP_VERSION}
               </span>
             </button>
           </nav>
 
+          {/* Language Switcher (Sidebar / Mobile Drawer) */}
+          <div className="mb-3">
+            <LanguageSelector className="w-full" />
+          </div>
+
           {/* Session Summary Footer */}
-          <div className="bg-[#11141c] border border-[#1e2432] rounded-xl p-3 space-y-2">
-            <div className="text-[11px] text-[#8f98a8] font-medium">Ringkasan Sesi</div>
+          <div className="bg-[#101d3d] border border-[#1e3159] rounded-xl p-3 space-y-2">
+            <div className="text-[11px] text-[#93a7cc] font-medium">{t('session.summary')}</div>
             <div className="flex items-center justify-between text-xs font-bold text-white">
               <span className="inline-flex items-center gap-1.5">
-                <Film className="w-3.5 h-3.5 text-[#ff5436]" />
+                <Film className="w-3.5 h-3.5 text-[#ff6b00]" />
                 9:16 · 30fps
               </span>
-              <span className="font-mono tabular-nums text-[#c7ff55]">{clips.length} klip</span>
+              <span className="font-mono tabular-nums text-[#c7ff55]">
+                {t('session.clipsCount', { count: clips.length })}
+              </span>
             </div>
-            <div className="text-[11px] text-[#8f98a8] truncate">
-              {activeFile ? activeLabel || activeFile.name : 'Menunggu video lokal'}
+            <div className="text-[11px] text-[#93a7cc] truncate">
+              {activeFile ? activeLabel || activeFile.name : t('session.waitingVideo')}
             </div>
           </div>
         </aside>
@@ -1261,48 +1274,60 @@ export default function App() {
         {/* Main Workspace */}
         <div className="min-w-0 flex flex-col">
           {/* Compact Mobile Header */}
-          <div className="lg:hidden flex items-center justify-between px-4 py-2.5 border-b border-[#1e2432] bg-[#0b0d12]/95 sticky top-0 z-30">
+          <div className="lg:hidden flex items-center justify-between gap-2 px-4 py-2.5 border-b border-[#1e3159] bg-[#0a1329]/95 sticky top-0 z-30">
             <button
               type="button"
               onClick={() => setMobileMenuOpen(true)}
-              className="px-2.5 py-1.5 rounded-lg bg-[#181c27] border border-[#2d3548] text-xs font-semibold text-white inline-flex items-center gap-1.5"
+              className="px-2.5 py-1.5 rounded-lg bg-[#16264d] border border-[#2a4173] text-xs font-semibold text-white inline-flex items-center gap-1.5"
             >
               <Menu className="w-3.5 h-3.5" />
-              Menu
+              {t('nav.menu')}
             </button>
-            <span className="font-bold text-sm text-white">Auto Clipper</span>
-            <button
-              type="button"
-              onClick={() => navigateStudio('clips')}
-              className="px-2.5 py-1.5 rounded-lg bg-[#ff5436] text-xs font-bold text-white"
-            >
-              Studio
-            </button>
+            <div className="flex items-center gap-2 min-w-0">
+              <img
+                src="/assets/aistudio/paijoclip-icon_f8577a46.png"
+                alt="Paijo Clip logo"
+                referrerPolicy="no-referrer"
+                className="w-5 h-6 object-contain shrink-0 rounded-sm"
+              />
+              <span className="font-bold text-sm text-white truncate">Paijo Clip</span>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <LanguageSelector compact />
+              <button
+                type="button"
+                onClick={() => navigateStudio('clips')}
+                className="px-2.5 py-1.5 rounded-lg bg-[#ff6b00] hover:bg-[#ff8224] text-xs font-bold text-white"
+              >
+                {t('nav.studioShort')}
+              </button>
+            </div>
           </div>
 
           {/* Desktop Top Bar */}
-          <header className="hidden lg:flex items-center justify-between gap-6 px-7 py-3.5 border-b border-[#1e2432] bg-[#08090c]/90 backdrop-blur-md sticky top-0 z-20">
-            <div className="flex items-center gap-2 text-xs text-[#8f98a8] min-w-0">
+          <header className="hidden lg:flex items-center justify-between gap-6 px-7 py-3.5 border-b border-[#1e3159] bg-[#0a1329]/90 backdrop-blur-md sticky top-0 z-20">
+            <div className="flex items-center gap-2 text-xs text-[#93a7cc] min-w-0">
               <strong className="text-white font-bold whitespace-nowrap">{crumbTitle}</strong>
               <span aria-hidden="true">/</span>
               <span className="truncate">{crumbSub}</span>
             </div>
-            <div className="shrink-0">
+            <div className="shrink-0 flex items-center gap-2.5">
+              <LanguageSelector />
               {view === 'studio' ? (
                 <button
                   type="button"
                   onClick={() => setView('exports')}
-                  className="px-3.5 py-1.5 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-white whitespace-nowrap cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-white whitespace-nowrap cursor-pointer"
                 >
-                  Hasil Ekspor ({exportedRecords.length})
+                  {t('nav.exports')} ({exportedRecords.length})
                 </button>
               ) : (
                 <button
                   type="button"
                   onClick={() => navigateStudio('clips')}
-                  className="px-3.5 py-1.5 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-white whitespace-nowrap cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-white whitespace-nowrap cursor-pointer"
                 >
-                  Buka Studio 9:16
+                  {t('nav.openStudio')}
                 </button>
               )}
             </div>
@@ -1431,7 +1456,7 @@ export default function App() {
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement('a');
                   a.href = url;
-                  a.download = 'subtitle-autoclipper.srt';
+                  a.download = 'subtitle-paijoclip.srt';
                   a.click();
                   setTimeout(() => URL.revokeObjectURL(url), 1000);
                 }}
@@ -1542,7 +1567,7 @@ export default function App() {
                 exporting={exporting}
                 exportProgressPct={exportProgressPct}
                 exportProgressLabel={exportProgressLabel}
-                statusMessage={statusMessage}
+                statusMessage={statusMessage || t('status.initial')}
                 onStartExport={handleStartExport}
                 onStopExport={() => exportAbortRef.current?.abort()}
                 latestDownloads={latestDownloads}

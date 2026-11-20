@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Check } from 'lucide-react';
+import { useTranslation } from '../i18n/LanguageContext';
 import type { CaptionSettings, SubtitlePosition, SubtitleStyleId } from '../types/clipper';
 import {
   CAPTION_PRESETS,
@@ -25,6 +26,7 @@ export function CaptionStylePanel({
   compact = false,
   onFontReady,
 }: CaptionStylePanelProps) {
+  const { t } = useTranslation();
   const [fontCategory, setFontCategory] = useState<FontCategory>('all');
 
   useEffect(() => {
@@ -46,7 +48,6 @@ export function CaptionStylePanel({
       ? FONT_CATALOG
       : FONT_CATALOG.filter((f) => f.category === fontCategory);
 
-  // Always keep currently selected font visible in dropdown even if filtered
   const activeFont = findFontEntry(settings.fontFamily);
   const dropdownFonts =
     activeFont && !filteredFonts.some((f) => f.value === activeFont.value)
@@ -57,15 +58,15 @@ export function CaptionStylePanel({
     STYLE_OPTIONS.find((s) => s.value === settings.style) || STYLE_OPTIONS[0];
 
   return (
-    <div className={compact ? 'space-y-3.5 pt-2 border-t border-[#1e2432]' : 'space-y-5'}>
+    <div className={compact ? 'space-y-3.5 pt-2 border-t border-[#1e3159]' : 'space-y-5'}>
       {/* Quick Presets */}
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-xs text-[#b7c0cf] font-medium">
-            Preset Gaya Populer (1 Klik)
+          <span className="text-xs text-[#b8c7e3] font-medium">
+            {t('style.presetsTitle')}
           </span>
-          <span className="text-[11px] text-[#687285]">
-            {FONT_CATALOG.length} font · {STYLE_OPTIONS.length} gaya
+          <span className="text-[11px] text-[#6d83ad]">
+            {t('style.catalogCount', { fonts: FONT_CATALOG.length, styles: STYLE_OPTIONS.length })}
           </span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -80,8 +81,8 @@ export function CaptionStylePanel({
                 onClick={() => onChange(preset.patch)}
                 className={`text-left px-3 py-2 rounded-lg border transition-colors cursor-pointer ${
                   isMatch
-                    ? 'bg-[#181c27] border-[#c7ff55]'
-                    : 'bg-[#0d1017] border-[#1e2432] hover:border-[#2d3548]'
+                    ? 'bg-[#16264d] border-[#c7ff55]'
+                    : 'bg-[#0c1733] border-[#1e3159] hover:border-[#2a4173]'
                 }`}
               >
                 <div className="flex items-center justify-between gap-1.5">
@@ -91,7 +92,7 @@ export function CaptionStylePanel({
                     style={{ backgroundColor: preset.patch.highlightColor || '#c7ff55' }}
                   />
                 </div>
-                <div className="text-[11px] text-[#8f98a8] truncate mt-0.5">{preset.subtitle}</div>
+                <div className="text-[11px] text-[#93a7cc] truncate mt-0.5">{preset.subtitle}</div>
               </button>
             );
           })}
@@ -101,8 +102,8 @@ export function CaptionStylePanel({
       {/* Category Tabs for Font Library */}
       <div className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <label className="text-xs text-[#b7c0cf] font-medium">
-            Koleksi Font ({dropdownFonts.length})
+          <label className="text-xs text-[#b8c7e3] font-medium">
+            {t('style.fontLibrary', { count: dropdownFonts.length })}
           </label>
           <div className="flex flex-wrap gap-1">
             {FONT_CATEGORIES.map((cat) => (
@@ -121,8 +122,8 @@ export function CaptionStylePanel({
                 }}
                 className={`px-2 py-1 rounded-md text-[11px] font-semibold cursor-pointer transition-colors ${
                   fontCategory === cat.id
-                    ? 'bg-[#ff5436] text-white'
-                    : 'bg-[#0d1017] text-[#8f98a8] hover:text-white border border-[#1e2432]'
+                    ? 'bg-[#ff6b00] text-white'
+                    : 'bg-[#0c1733] text-[#93a7cc] hover:text-white border border-[#1e3159]'
                 }`}
               >
                 {cat.label}
@@ -134,10 +135,10 @@ export function CaptionStylePanel({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <select
-              aria-label="Pilih Font Subtitle"
+              aria-label={t('style.fontLibrary', { count: dropdownFonts.length })}
               value={settings.fontFamily}
               onChange={(e) => onChange({ fontFamily: e.target.value })}
-              className="w-full bg-[#0d1017] text-[#f3f5f8] border border-[#2d3548] rounded-lg px-3 py-2 text-xs"
+              className="w-full bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-3 py-2 text-xs"
             >
               {dropdownFonts.map((opt) => (
                 <option key={opt.id} value={opt.value}>
@@ -149,10 +150,10 @@ export function CaptionStylePanel({
 
           <div>
             <select
-              aria-label="Pilih Gaya Animasi dan Tampilan"
+              aria-label={t('studio.tabStyle')}
               value={settings.style}
               onChange={(e) => onChange({ style: e.target.value as SubtitleStyleId })}
-              className="w-full bg-[#0d1017] text-[#f3f5f8] border border-[#2d3548] rounded-lg px-3 py-2 text-xs"
+              className="w-full bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-3 py-2 text-xs"
             >
               {STYLE_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -163,7 +164,7 @@ export function CaptionStylePanel({
           </div>
         </div>
 
-        <div className="bg-[#080a0f] border border-[#1e2432] rounded-lg px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2">
+        <div className="bg-[#070e20] border border-[#1e3159] rounded-lg px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2">
           <div
             className="text-base text-white tracking-wide truncate max-w-full"
             style={{
@@ -173,49 +174,50 @@ export function CaptionStylePanel({
               textTransform: settings.caps ? 'uppercase' : 'none',
             }}
           >
-            Contoh Teks <span style={{ color: settings.highlightColor }}>Subtitle 9:16</span>
+            {t('style.samplePreviewBefore')}{' '}
+            <span style={{ color: settings.highlightColor }}>{t('style.samplePreviewHighlight')}</span>
           </div>
-          <span className="text-[11px] text-[#8f98a8]">{activeStyleMeta.desc}</span>
+          <span className="text-[11px] text-[#93a7cc]">{activeStyleMeta.desc}</span>
         </div>
       </div>
 
       {/* Size, Position, Weight */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
-          <label className="block text-xs text-[#b7c0cf] font-medium mb-1.5">Ukuran Huruf</label>
+          <label className="block text-xs text-[#b8c7e3] font-medium mb-1.5">{t('style.fontSize')}</label>
           <select
             value={settings.fontSize}
             onChange={(e) => onChange({ fontSize: Number(e.target.value) })}
-            className="w-full bg-[#0d1017] text-[#f3f5f8] border border-[#2d3548] rounded-lg px-3 py-2 text-xs"
+            className="w-full bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-3 py-2 text-xs"
           >
-            <option value={36}>Kecil (36px)</option>
-            <option value={43}>Sedang (43px)</option>
-            <option value={52}>Besar (52px)</option>
-            <option value={60}>Ekstra Besar (60px)</option>
+            <option value={36}>{t('style.sizeSmall')}</option>
+            <option value={43}>{t('style.sizeMedium')}</option>
+            <option value={52}>{t('style.sizeLarge')}</option>
+            <option value={60}>{t('style.sizeXLarge')}</option>
           </select>
         </div>
 
         <div>
-          <label className="block text-xs text-[#b7c0cf] font-medium mb-1.5">Posisi Vertikal</label>
+          <label className="block text-xs text-[#b8c7e3] font-medium mb-1.5">{t('style.verticalPos')}</label>
           <select
             value={settings.position}
             onChange={(e) => onChange({ position: e.target.value as SubtitlePosition })}
-            className="w-full bg-[#0d1017] text-[#f3f5f8] border border-[#2d3548] rounded-lg px-3 py-2 text-xs"
+            className="w-full bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-3 py-2 text-xs"
           >
-            <option value="bottom">Bawah (Aman UI Reels)</option>
-            <option value="lower">Tengah-Bawah</option>
-            <option value="center">Tengah Layar</option>
-            <option value="top">Atas</option>
+            <option value="bottom">{t('style.posBottom')}</option>
+            <option value="lower">{t('style.posLower')}</option>
+            <option value="center">{t('style.posCenter')}</option>
+            <option value="top">{t('style.posTop')}</option>
           </select>
         </div>
 
         <div>
-          <label className="block text-xs text-[#b7c0cf] font-medium mb-1.5">Ketebalan Huruf</label>
+          <label className="block text-xs text-[#b8c7e3] font-medium mb-1.5">{t('style.fontWeight')}</label>
           <select
             disabled={Boolean(activeFont?.singleDisplayWeight)}
             value={settings.fontWeight || '800'}
             onChange={(e) => onChange({ fontWeight: e.target.value as '700' | '800' | '900' })}
-            className="w-full bg-[#0d1017] text-[#f3f5f8] border border-[#2d3548] rounded-lg px-3 py-2 text-xs disabled:opacity-45"
+            className="w-full bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-3 py-2 text-xs disabled:opacity-45"
           >
             <option value="700">Bold (700)</option>
             <option value="800">Extra Bold (800)</option>
@@ -225,9 +227,9 @@ export function CaptionStylePanel({
       </div>
 
       {/* Swatches & Toggles */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-[#1e2432]">
+      <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-[#1e3159]">
         <div className="space-y-2">
-          <span className="block text-xs text-[#b7c0cf] font-medium">Warna Sorotan Kata</span>
+          <span className="block text-xs text-[#b8c7e3] font-medium">{t('style.highlightColor')}</span>
           <div className="flex items-center gap-2 flex-wrap">
             {HIGHLIGHT_SWATCHES.map((sw) => {
               const active = settings.highlightColor === sw.color;
@@ -250,7 +252,7 @@ export function CaptionStylePanel({
         </div>
 
         <div className="flex flex-wrap items-center gap-4">
-          <label className="inline-flex items-center gap-2 text-xs font-semibold text-[#e4e8f0] cursor-pointer select-none">
+          <label className="inline-flex items-center gap-2 text-xs font-semibold text-[#e4ecfa] cursor-pointer select-none">
             <input
               type="checkbox"
               checked={Boolean(settings.italic)}
@@ -258,16 +260,16 @@ export function CaptionStylePanel({
               onChange={(e) => onChange({ italic: e.target.checked })}
             />
             <span className={activeFont?.singleDisplayWeight ? 'opacity-50' : 'italic'}>
-              Miring (Italic)
+              {t('style.italic')}
             </span>
           </label>
-          <label className="inline-flex items-center gap-2 text-xs font-semibold text-[#e4e8f0] cursor-pointer select-none">
+          <label className="inline-flex items-center gap-2 text-xs font-semibold text-[#e4ecfa] cursor-pointer select-none">
             <input
               type="checkbox"
               checked={settings.caps}
               onChange={(e) => onChange({ caps: e.target.checked })}
             />
-            <span>HURUF KAPITAL</span>
+            <span>{t('style.uppercase')}</span>
           </label>
         </div>
       </div>

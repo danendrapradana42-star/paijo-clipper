@@ -22,6 +22,8 @@ import type {
   ExportFormat,
   ExportedClipRecord,
 } from '../types/clipper';
+import { useTranslation } from '../i18n/LanguageContext';
+import { APP_LANGUAGES, type AppLocale } from '../i18n/translations';
 import {
   buildTimeline,
   measureAudioDuration,
@@ -44,40 +46,40 @@ const VOICE_PRESETS: Array<{ id: string; label: string; shortName: string; previ
   {
     id: 'ricky',
     shortName: 'Ricky',
-    label: 'Ricky · Lembut & Autentik (Indonesia)',
+    label: 'Ricky · Soft & Authentic (Indonesian)',
     previewUrl: '/assets/aistudio/voice_preview_ricky_-_soft___authentic_indonesian_e1eddf78.mp3',
   },
   {
     id: 'sikedewo',
     shortName: 'Sikedewo',
-    label: 'Sikedewo · Lembut, Tenang & Jelas (Indonesia)',
+    label: 'Sikedewo · Tender, Calm & Clear (Indonesian)',
     previewUrl: '/assets/aistudio/voice_preview_sikedewo_-_tender__calm_and_clear_67f5636e.mp3',
   },
   {
     id: 'todd',
     shortName: 'Todd',
-    label: 'Todd · Jelas, Menarik & Edukatif',
+    label: 'Todd · Clear, Engaging & Educational',
     previewUrl: '/assets/aistudio/voice_preview_todd_-_clear__engaging_and_educational_1be6d861.mp3',
   },
   {
     id: 'nichalia',
     shortName: 'Nichalia Schwartz',
-    label: 'Nichalia Schwartz · Cerah & Ramah',
+    label: 'Nichalia Schwartz · Bright & Friendly',
     previewUrl: '/assets/aistudio/voice_preview_nichalia_schwartz_-_bright_and_friendly_0cd738b6.mp3',
   },
-  { id: 'Kore', shortName: 'Kore', label: 'Kore · Natural & Jelas (Standar)' },
-  { id: 'Puck', shortName: 'Puck', label: 'Puck · Cerah & Enerjik (Standar)' },
-  { id: 'Charon', shortName: 'Charon', label: 'Charon · Berat & Berwibawa (Standar)' },
-  { id: 'Fenrir', shortName: 'Fenrir', label: 'Fenrir · Tegas & Cepat (Standar)' },
-  { id: 'Zephyr', shortName: 'Zephyr', label: 'Zephyr · Tenang & Hangat (Standar)' },
+  { id: 'Kore', shortName: 'Kore', label: 'Kore · Natural & Clear' },
+  { id: 'Puck', shortName: 'Puck', label: 'Puck · Bright & Energetic' },
+  { id: 'Charon', shortName: 'Charon', label: 'Charon · Deep & Authoritative' },
+  { id: 'Fenrir', shortName: 'Fenrir', label: 'Fenrir · Assertive & Crisp' },
+  { id: 'Zephyr', shortName: 'Zephyr', label: 'Zephyr · Calm & Warm' },
 ];
 
 const DURATION_OPTIONS = [
-  { minutes: 5, sceneCount: 15, label: '5 Menit · 15 Adegan (Minimal)' },
-  { minutes: 6, sceneCount: 18, label: '6 Menit · 18 Adegan (Standar)' },
-  { minutes: 7, sceneCount: 21, label: '7 Menit · 21 Adegan (Mendalam)' },
-  { minutes: 8, sceneCount: 24, label: '8 Menit · 24 Adegan (Panjang)' },
-  { minutes: 10, sceneCount: 28, label: '10 Menit · 28 Adegan (Lengkap)' },
+  { minutes: 5, sceneCount: 15, labelKey: 'ai.dur5' as const },
+  { minutes: 6, sceneCount: 18, labelKey: 'ai.dur6' as const },
+  { minutes: 7, sceneCount: 21, labelKey: 'ai.dur7' as const },
+  { minutes: 8, sceneCount: 24, labelKey: 'ai.dur8' as const },
+  { minutes: 10, sceneCount: 28, labelKey: 'ai.dur10' as const },
 ];
 
 export function AiVideoView({
@@ -86,6 +88,7 @@ export function AiVideoView({
   onRegisterExport,
   onSendToStudio,
 }: AiVideoViewProps) {
+  const { t, locale } = useTranslation();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const micRecorderRef = useRef<{ recorder: MediaRecorder; chunks: BlobPart[]; stream: MediaStream } | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -93,7 +96,7 @@ export function AiVideoView({
 
   const [prompt, setPrompt] = useState('');
   const [durationMinutes, setDurationMinutes] = useState(5);
-  const [language, setLanguage] = useState<'id' | 'en'>('id');
+  const [language, setLanguage] = useState<AppLocale>(locale);
   const [theme, setTheme] = useState<AiTheme>('cinematic');
   const [videoType, setVideoType] = useState('general');
   const [showGuide, setShowGuide] = useState(true);
@@ -123,8 +126,8 @@ export function AiVideoView({
   const [voices, setVoices] = useState<Array<AiVoiceTrack | null>>([]);
   const [busy, setBusy] = useState(false);
   const [progressPct, setProgressPct] = useState(0);
-  const [progressLabel, setProgressLabel] = useState('Siap');
-  const [statusText, setStatusText] = useState('Masukkan topik lalu jalankan Tahap 1 untuk menyusun naskah & adegan 9:16.');
+  const [progressLabel, setProgressLabel] = useState('');
+  const [statusText, setStatusText] = useState('');
   const [micSceneIdx, setMicSceneIdx] = useState<number | null>(null);
 
   const [previewPlaying, setPreviewPlaying] = useState(false);
@@ -151,18 +154,18 @@ export function AiVideoView({
     if (!ctx) return;
 
     if (!timeline.length) {
-      ctx.fillStyle = '#07090d';
+      ctx.fillStyle = '#070e20';
       ctx.fillRect(0, 0, 720, 1280);
-      ctx.strokeStyle = '#1e2432';
+      ctx.strokeStyle = '#1e3159';
       ctx.lineWidth = 2;
       ctx.strokeRect(36, 36, 648, 1208);
-      ctx.fillStyle = '#cbd2de';
+      ctx.fillStyle = '#dce6f7';
       ctx.font = '700 24px "Plus Jakarta Sans", sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('Pratinjau Video AI 9:16', 360, 610);
-      ctx.fillStyle = '#687285';
+      ctx.fillText(t('ai.previewEmptyCanvasTitle'), 360, 610);
+      ctx.fillStyle = '#6d83ad';
       ctx.font = '500 18px "Plus Jakarta Sans", sans-serif';
-      ctx.fillText('Buat naskah & visual untuk pratinjau', 360, 652);
+      ctx.fillText(t('ai.previewEmptyCanvasSub'), 360, 652);
       return;
     }
 
@@ -172,7 +175,7 @@ export function AiVideoView({
       includeCaptions,
       captionSettings,
     });
-  }, [timeline, totalSec, previewSec, visualEffect, transitionStyle, includeCaptions, captionSettings, fontTick]);
+  }, [timeline, totalSec, previewSec, visualEffect, transitionStyle, includeCaptions, captionSettings, fontTick, t]);
 
   // Animated playback loop
   useEffect(() => {
@@ -558,16 +561,16 @@ export function AiVideoView({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[316px_minmax(0,1fr)] gap-6 items-start">
       {/* Left Sticky 9:16 AI Video Preview */}
-      <aside className="bg-[#11141c] border border-[#1e2432] rounded-xl p-4 flex flex-col items-center gap-3 lg:sticky lg:top-20">
-        <div className="w-full text-center text-xs font-semibold truncate pb-2 border-b border-[#1e2432] text-[#c7ff55]">
-          {title || 'Pembuat Video AI 9:16'}
+      <aside className="bg-[#101d3d] border border-[#1e3159] rounded-xl p-4 flex flex-col items-center gap-3 lg:sticky lg:top-20">
+        <div className="w-full text-center text-xs font-semibold truncate pb-2 border-b border-[#1e3159] text-[#c7ff55]">
+          {title || t('ai.previewHeader')}
         </div>
 
         <canvas
           ref={canvasRef}
           width={720}
           height={1280}
-          className="w-full max-w-[264px] aspect-[9/16] bg-[#06080c] border border-[#2d3548] rounded-xl block"
+          className="w-full max-w-[264px] aspect-[9/16] bg-[#070e20] border border-[#2a4173] rounded-xl block"
         />
 
         <div className="w-full space-y-2">
@@ -579,10 +582,10 @@ export function AiVideoView({
                 if (previewSec >= totalSec - 0.1) setPreviewSec(0);
                 setPreviewPlaying((p) => !p);
               }}
-              className="py-2 px-3 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-white inline-flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer"
+              className="py-2 px-3 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-white inline-flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer"
             >
               {previewPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-              {previewPlaying ? 'Jeda' : 'Pratinjau'}
+              {previewPlaying ? t('studio.pause') : t('ai.previewBtn')}
             </button>
             <button
               type="button"
@@ -591,9 +594,9 @@ export function AiVideoView({
                 setPreviewPlaying(false);
                 setPreviewSec(0);
               }}
-              className="py-2 px-3 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-[#cbd2de] disabled:opacity-40 cursor-pointer"
+              className="py-2 px-3 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-[#dce6f7] disabled:opacity-40 cursor-pointer"
             >
-              Awal
+              {t('ai.startBtn')}
             </button>
           </div>
           <input
@@ -608,21 +611,21 @@ export function AiVideoView({
             }}
             className="w-full cursor-pointer disabled:opacity-40"
           />
-          <div className="text-[11px] font-mono tabular-nums text-[#8f98a8] text-center">
+          <div className="text-[11px] font-mono tabular-nums text-[#93a7cc] text-center">
             {totalSec > 0
               ? `${formatClock(previewSec)} / ${formatClock(totalSec)}`
-              : 'Buat naskah & gambar untuk pratinjau'}
+              : t('ai.previewHint')}
           </div>
         </div>
 
         {finalVideo && (
-          <div className="w-full pt-3 border-t border-[#1e2432] space-y-2.5">
-            <div className="text-xs font-bold text-emerald-400">Video Final AI Siap</div>
+          <div className="w-full pt-3 border-t border-[#1e3159] space-y-2.5">
+            <div className="text-xs font-bold text-emerald-400">{t('ai.finalReady')}</div>
             <video
               src={finalVideo.url}
               controls
               playsInline
-              className="w-full aspect-[9/16] rounded-lg bg-[#05070a]"
+              className="w-full aspect-[9/16] rounded-lg bg-[#040915]"
             />
             <a
               href={finalVideo.url}
@@ -630,7 +633,7 @@ export function AiVideoView({
               className="w-full py-2 px-3 rounded-lg bg-[#c7ff55] hover:bg-[#d6ff7d] text-[#111507] text-xs font-bold inline-flex items-center justify-center gap-1.5"
             >
               <Download className="w-3.5 h-3.5" />
-              Unduh ({(finalVideo.sizeBytes / (1024 * 1024)).toFixed(1)} MB)
+              {t('ai.downloadMb', { mb: (finalVideo.sizeBytes / (1024 * 1024)).toFixed(1) })}
             </a>
             <button
               type="button"
@@ -638,11 +641,11 @@ export function AiVideoView({
                 const file = new File([finalVideo.blob], `video-ai.${finalVideo.ext}`, {
                   type: finalVideo.blob.type || 'video/webm',
                 });
-                onSendToStudio(file, finalVideo.srtText, title || 'Video AI Otomatis');
+                onSendToStudio(file, finalVideo.srtText, title || t('nav.aiVideo'));
               }}
-              className="w-full py-2 px-3 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-white cursor-pointer"
+              className="w-full py-2 px-3 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-white cursor-pointer"
             >
-              Edit Lanjut di Studio 9:16 →
+              {t('ai.sendToStudio')}
             </button>
           </div>
         )}
@@ -650,82 +653,70 @@ export function AiVideoView({
 
       {/* Right 4-Stage Pipeline */}
       <div className="space-y-4 min-w-0">
-        {/* Panduan & Langkah Penggunaan Video AI */}
-        <section className="bg-[#11141c] border border-[#1e2432] rounded-xl overflow-hidden">
+        {/* Guide & Steps */}
+        <section className="bg-[#101d3d] border border-[#1e3159] rounded-xl overflow-hidden">
           <button
             type="button"
             onClick={() => setShowGuide((v) => !v)}
-            className="w-full px-5 py-3.5 flex items-center justify-between gap-3 text-left cursor-pointer hover:bg-[#151924] transition-colors"
+            className="w-full px-5 py-3.5 flex items-center justify-between gap-3 text-left cursor-pointer hover:bg-[#142347] transition-colors"
           >
             <div className="flex items-center gap-2.5 min-w-0">
               <BookOpen className="w-4 h-4 text-[#c7ff55] shrink-0" />
               <div className="min-w-0">
                 <h2 className="text-sm font-bold text-white">
-                  Panduan &amp; Langkah Penggunaan Video AI (Minimal 5 Menit)
+                  {t('ai.guideTitle')}
                 </h2>
-                <p className="text-xs text-[#8f98a8] truncate">
-                  Ikuti urutan 4 langkah berikut agar naskah, visual, suara narasi, dan render berjalan lancar.
+                <p className="text-xs text-[#93a7cc] truncate">
+                  {t('ai.guideSubtitle')}
                 </p>
               </div>
             </div>
-            <span className="text-xs font-semibold text-[#cbd2de] inline-flex items-center gap-1 shrink-0 whitespace-nowrap">
-              {showGuide ? 'Sembunyikan' : 'Lihat Panduan'}
+            <span className="text-xs font-semibold text-[#dce6f7] inline-flex items-center gap-1 shrink-0 whitespace-nowrap">
+              {showGuide ? t('ai.hideGuide') : t('ai.showGuide')}
               {showGuide ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </span>
           </button>
 
           {showGuide && (
-            <div className="px-5 pb-4 pt-2 border-t border-[#1e2432] space-y-3">
+            <div className="px-5 pb-4 pt-2 border-t border-[#1e3159] space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                <div className="bg-[#0d1017] border border-[#1e2432] rounded-lg p-3 space-y-1">
-                  <div className="font-bold text-[#c7ff55]">01. Tulis Topik &amp; Pilih Durasi (5–10 Menit)</div>
-                  <p className="text-[#aeb6c4] leading-relaxed">
-                    Ketik topik video secara jelas, pilih durasi minimal <strong className="text-white">5 menit</strong> hingga <strong className="text-white">10 menit</strong>, gaya konten, dan tema visual. Klik <strong className="text-white">1. Buat Naskah</strong> atau <strong className="text-white">Jalankan Semua Tahap (1→4)</strong>.
-                  </p>
+                <div className="bg-[#0c1733] border border-[#1e3159] rounded-lg p-3 space-y-1">
+                  <div className="font-bold text-[#c7ff55]">{t('ai.step1Title')}</div>
+                  <p className="text-[#b8c7e3] leading-relaxed">{t('ai.step1Desc')}</p>
                 </div>
-                <div className="bg-[#0d1017] border border-[#1e2432] rounded-lg p-3 space-y-1">
-                  <div className="font-bold text-[#c7ff55]">02. Periksa Naskah &amp; Gambar Adegan</div>
-                  <p className="text-[#aeb6c4] leading-relaxed">
-                    Setelah naskah muncul, Anda dapat mengedit kalimat narasi tiap adegan atau mengunggah gambar kustom per adegan agar visual lebih variatif sebelum suara dan video dibuat.
-                  </p>
+                <div className="bg-[#0c1733] border border-[#1e3159] rounded-lg p-3 space-y-1">
+                  <div className="font-bold text-[#c7ff55]">{t('ai.step2Title')}</div>
+                  <p className="text-[#b8c7e3] leading-relaxed">{t('ai.step2Desc')}</p>
                 </div>
-                <div className="bg-[#0d1017] border border-[#1e2432] rounded-lg p-3 space-y-1">
-                  <div className="font-bold text-[#c7ff55]">03. Render Visual &amp; Buat Suara Narasi</div>
-                  <p className="text-[#aeb6c4] leading-relaxed">
-                    Klik <strong className="text-white">2. Render Visual 9:16</strong> lalu <strong className="text-white">3. Buat Suara Narasi AI</strong> (atau gunakan <strong className="text-white">Rekam Suara</strong> mikrofon). Cek kesesuaian urutan lewat tombol <strong className="text-white">Pratinjau</strong> di panel kiri.
-                  </p>
+                <div className="bg-[#0c1733] border border-[#1e3159] rounded-lg p-3 space-y-1">
+                  <div className="font-bold text-[#c7ff55]">{t('ai.step3Title')}</div>
+                  <p className="text-[#b8c7e3] leading-relaxed">{t('ai.step3Desc')}</p>
                 </div>
-                <div className="bg-[#0d1017] border border-[#1e2432] rounded-lg p-3 space-y-1">
-                  <div className="font-bold text-[#c7ff55]">04. Rangkai, Render &amp; Unduh Hasil</div>
-                  <p className="text-[#aeb6c4] leading-relaxed">
-                    Pilih efek gerak, transisi, dan format <strong className="text-white">WebM</strong> (disarankan untuk durasi 5–10 menit), lalu klik <strong className="text-white">4. Rangkai &amp; Render Video</strong>. Biarkan tab browser tetap terbuka hingga selesai; hasil otomatis masuk ke <strong className="text-white">Hasil Ekspor</strong>.
-                  </p>
+                <div className="bg-[#0c1733] border border-[#1e3159] rounded-lg p-3 space-y-1">
+                  <div className="font-bold text-[#c7ff55]">{t('ai.step4Title')}</div>
+                  <p className="text-[#b8c7e3] leading-relaxed">{t('ai.step4Desc')}</p>
                 </div>
               </div>
-              <p className="text-[11.5px] text-[#8f98a8]">
-                Catatan: Pembuatan video berdurasi 5–10 menit merangkai 15–28 adegan serta proses render real-time di browser sesuai total durasi video. Anda dapat menekan tombol <strong className="text-[#e8edf5]">Batal</strong> kapan saja saat render berlangsung.
-              </p>
+              <p className="text-[11.5px] text-[#93a7cc]">{t('ai.guideNote')}</p>
             </div>
           )}
         </section>
 
         {/* Stage 1: Script */}
-        <section className="bg-[#11141c] border border-[#1e2432] rounded-xl p-5 space-y-3.5">
+        <section className="bg-[#101d3d] border border-[#1e3159] rounded-xl p-5 space-y-3.5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm font-bold text-white">1. Naskah &amp; Adegan (Gemini AI)</h2>
-              <p className="text-xs text-[#8f98a8] mt-0.5">
-                Tulis topik video; AI menyusun naskah mendalam berdurasi minimal 5 hingga 10 menit lengkap dengan timestamp.
-              </p>
+              <h2 className="text-sm font-bold text-white">{t('ai.stage1Title')}</h2>
+              <p className="text-xs text-[#93a7cc] mt-0.5">{t('ai.stage1Desc')}</p>
             </div>
             <button
               type="button"
               disabled={busy}
               onClick={handleRunAll}
-              className="px-4 py-2 rounded-lg bg-[#ff5436] hover:bg-[#ff6b52] disabled:opacity-40 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+              className="px-4 py-2 rounded-lg bg-[#ff6b00] hover:bg-[#ff8224] disabled:opacity-40 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              Jalankan Semua Tahap (1→4)
+              {t('ai.runAllBtn')}
             </button>
           </div>
 
@@ -733,62 +724,65 @@ export function AiVideoView({
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             rows={3}
-            placeholder="Contoh: Panduan lengkap membangun kebiasaan keuangan sehat dari nol untuk pekerja muda beserta studi kasus nyata"
-            className="w-full bg-[#080a0f] text-[#f3f5f8] border border-[#2d3548] rounded-lg p-3 text-xs leading-relaxed focus:outline-none focus:border-[#ff5436]"
+            placeholder={t('ai.promptPlaceholder')}
+            className="w-full bg-[#070e20] text-[#f1f5fc] border border-[#2a4173] rounded-lg p-3 text-xs leading-relaxed focus:outline-none focus:border-[#ff6b00]"
           />
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
             <div>
-              <label className="block text-[11px] text-[#b7c0cf] mb-1">
-                Target Durasi (Min. 5 Menit)
+              <label className="block text-[11px] text-[#b8c7e3] mb-1">
+                {t('ai.durationLabel')}
               </label>
               <select
                 value={durationMinutes}
                 onChange={(e) => setDurationMinutes(Number(e.target.value))}
-                className="w-full bg-[#0d1017] text-[#f3f5f8] border border-[#2d3548] rounded-lg px-2.5 py-2 text-xs"
+                className="w-full bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-2.5 py-2 text-xs"
               >
                 {DURATION_OPTIONS.map((opt) => (
                   <option key={opt.minutes} value={opt.minutes}>
-                    {opt.label}
+                    {t(opt.labelKey)}
                   </option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block text-[11px] text-[#b7c0cf] mb-1">Gaya Konten</label>
+              <label className="block text-[11px] text-[#b8c7e3] mb-1">{t('ai.contentStyle')}</label>
               <select
                 value={videoType}
                 onChange={(e) => setVideoType(e.target.value)}
-                className="w-full bg-[#0d1017] text-[#f3f5f8] border border-[#2d3548] rounded-lg px-2.5 py-2 text-xs"
+                className="w-full bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-2.5 py-2 text-xs"
               >
-                <option value="general">Edukasi &amp; Storytelling</option>
-                <option value="finance">Bisnis &amp; Ekonomi</option>
-                <option value="prehistoric">Sejarah &amp; Fakta</option>
-                <option value="pov">Cerita POV</option>
+                <option value="general">{t('ai.typeGeneral')}</option>
+                <option value="finance">{t('ai.typeFinance')}</option>
+                <option value="prehistoric">{t('ai.typeHistory')}</option>
+                <option value="pov">{t('ai.typePov')}</option>
               </select>
             </div>
             <div>
-              <label className="block text-[11px] text-[#b7c0cf] mb-1">Tema Visual</label>
+              <label className="block text-[11px] text-[#b8c7e3] mb-1">{t('ai.visualTheme')}</label>
               <select
                 value={theme}
                 onChange={(e) => setTheme(e.target.value as AiTheme)}
-                className="w-full bg-[#0d1017] text-[#f3f5f8] border border-[#2d3548] rounded-lg px-2.5 py-2 text-xs"
+                className="w-full bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-2.5 py-2 text-xs"
               >
-                <option value="cinematic">Sinematik</option>
-                <option value="editorial">Editorial</option>
-                <option value="tech">Teknologi</option>
-                <option value="minimal">Minimalis</option>
+                <option value="cinematic">{t('ai.themeCinematic')}</option>
+                <option value="editorial">{t('ai.themeEditorial')}</option>
+                <option value="tech">{t('ai.themeTech')}</option>
+                <option value="minimal">{t('ai.themeMinimal')}</option>
               </select>
             </div>
             <div>
-              <label className="block text-[11px] text-[#b7c0cf] mb-1">Bahasa</label>
+              <label className="block text-[11px] text-[#b8c7e3] mb-1">{t('ai.scriptLanguage')}</label>
               <select
                 value={language}
-                onChange={(e) => setLanguage(e.target.value as 'id' | 'en')}
-                className="w-full bg-[#0d1017] text-[#f3f5f8] border border-[#2d3548] rounded-lg px-2.5 py-2 text-xs"
+                onChange={(e) => setLanguage(e.target.value as AppLocale)}
+                className="w-full bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-2.5 py-2 text-xs"
               >
-                <option value="id">Indonesia</option>
-                <option value="en">English</option>
+                {APP_LANGUAGES.map((lang) => (
+                  <option key={lang.code} value={lang.code}>
+                    {lang.nativeName}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -798,55 +792,55 @@ export function AiVideoView({
               type="button"
               disabled={busy}
               onClick={() => generateScript()}
-              className="px-3.5 py-2 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-white disabled:opacity-40 cursor-pointer"
+              className="px-3.5 py-2 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-white disabled:opacity-40 cursor-pointer"
             >
-              1. Buat Naskah &amp; Timestamp AI
+              {t('ai.genScriptBtn')}
             </button>
-            <span className="text-xs font-mono tabular-nums text-[#8f98a8]">
+            <span className="text-xs font-mono tabular-nums text-[#93a7cc]">
               {scenes.length > 0
-                ? `${scenes.length} adegan siap · Total ${formatClock(totalSec)}`
-                : 'Belum ada naskah (min. 5:00)'}
+                ? t('ai.scenesReady', { count: scenes.length, duration: formatClock(totalSec) })
+                : t('ai.noScriptYet')}
             </span>
           </div>
         </section>
 
         {/* Stage 2 & 3: Scene Cards + Visuals + Voice */}
-        <section className="bg-[#11141c] border border-[#1e2432] rounded-xl p-5 space-y-3.5">
+        <section className="bg-[#101d3d] border border-[#1e3159] rounded-xl p-5 space-y-3.5">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-sm font-bold text-white">2. Visual Adegan &amp; 3. Suara Narasi AI</h2>
+            <h2 className="text-sm font-bold text-white">{t('ai.stage23Title')}</h2>
             <div className="flex flex-wrap gap-2">
               {busy && abortControllerRef.current && (
                 <button
                   type="button"
                   onClick={() => abortControllerRef.current?.abort()}
-                  className="px-3 py-1.5 rounded-lg bg-[#181c27] hover:bg-red-950/50 border border-[#2d3548] text-xs font-bold text-white inline-flex items-center gap-1.5 cursor-pointer"
+                  className="px-3 py-1.5 rounded-lg bg-[#16264d] hover:bg-red-950/50 border border-[#2a4173] text-xs font-bold text-white inline-flex items-center gap-1.5 cursor-pointer"
                 >
                   <Square className="w-3 h-3 fill-current" />
-                  Batal
+                  {t('ai.cancelBtn')}
                 </button>
               )}
               <button
                 type="button"
                 disabled={busy || scenes.length === 0}
                 onClick={() => generateFrames()}
-                className="px-3 py-1.5 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-white disabled:opacity-40 cursor-pointer"
+                className="px-3 py-1.5 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-white disabled:opacity-40 cursor-pointer"
               >
-                2. Render Visual 9:16
+                {t('ai.renderVisualBtn')}
               </button>
               <button
                 type="button"
                 disabled={busy || scenes.length === 0}
                 onClick={() => generateAllVoices()}
-                className="px-3 py-1.5 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-white disabled:opacity-40 cursor-pointer"
+                className="px-3 py-1.5 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-white disabled:opacity-40 cursor-pointer"
               >
-                3. Buat Suara Narasi AI
+                {t('ai.genVoiceBtn')}
               </button>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <div>
-              <label className="block text-[11px] text-[#b7c0cf] mb-1">Karakter Suara AI (TTS)</label>
+              <label className="block text-[11px] text-[#b8c7e3] mb-1">{t('ai.voiceCharLabel')}</label>
               <div className="flex items-center gap-2">
                 <select
                   value={voiceName}
@@ -854,7 +848,7 @@ export function AiVideoView({
                     stopVoiceSample();
                     setVoiceName(e.target.value);
                   }}
-                  className="flex-1 min-w-0 bg-[#0d1017] text-[#f3f5f8] border border-[#2d3548] rounded-lg px-2.5 py-2 text-xs"
+                  className="flex-1 min-w-0 bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-2.5 py-2 text-xs"
                 >
                   {VOICE_PRESETS.map((vp) => (
                     <option key={vp.id} value={vp.id}>
@@ -866,22 +860,22 @@ export function AiVideoView({
                   <button
                     type="button"
                     onClick={handleToggleVoiceSample}
-                    title={`Putar contoh suara ${selectedVoicePreset.shortName}`}
+                    title={selectedVoicePreset.shortName}
                     className={`px-2.5 py-2 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 cursor-pointer ${
                       playingSampleId === selectedVoicePreset.id
                         ? 'bg-[#c7ff55] text-[#111507] border-[#c7ff55]'
-                        : 'bg-[#181c27] hover:bg-[#212636] border-[#2d3548] text-[#e8edf5]'
+                        : 'bg-[#16264d] hover:bg-[#1e3363] border-[#2a4173] text-[#e4ecfa]'
                     }`}
                   >
                     {playingSampleId === selectedVoicePreset.id ? (
                       <>
                         <Square className="w-3 h-3 fill-current" />
-                        Stop
+                        {t('ai.stopSample')}
                       </>
                     ) : (
                       <>
                         <Volume2 className="w-3.5 h-3.5" />
-                        Contoh
+                        {t('ai.sampleBtn')}
                       </>
                     )}
                   </button>
@@ -889,23 +883,23 @@ export function AiVideoView({
               </div>
             </div>
             <div>
-              <label className="block text-[11px] text-[#b7c0cf] mb-1">Gaya Bicara</label>
+              <label className="block text-[11px] text-[#b8c7e3] mb-1">{t('ai.speakingStyleLabel')}</label>
               <select
                 value={voiceStyle}
                 onChange={(e) => setVoiceStyle(e.target.value)}
-                className="w-full bg-[#0d1017] text-[#f3f5f8] border border-[#2d3548] rounded-lg px-2.5 py-2 text-xs"
+                className="w-full bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-2.5 py-2 text-xs"
               >
-                <option value="Clear, engaging short-form video narrator">Narator Shorts Menarik</option>
-                <option value="Energetic, fast-paced YouTube creator">Kreator Enerjik &amp; Cepat</option>
-                <option value="Calm, warm documentary storyteller">Storyteller Tenang</option>
-                <option value="Confident professional presenter">Presenter Profesional</option>
+                <option value="Clear, engaging short-form video narrator">{t('ai.styleShorts')}</option>
+                <option value="Energetic, fast-paced YouTube creator">{t('ai.styleEnergetic')}</option>
+                <option value="Calm, warm documentary storyteller">{t('ai.styleCalm')}</option>
+                <option value="Confident professional presenter">{t('ai.stylePro')}</option>
               </select>
             </div>
           </div>
 
           {scenes.length === 0 ? (
-            <div className="border border-dashed border-[#2d3548] rounded-lg p-6 text-center text-xs text-[#8f98a8] bg-[#0d1017]">
-              Jalankan Tahap 1 untuk melihat daftar adegan, mengunggah gambar kustom, atau merekam suara narasi.
+            <div className="border border-dashed border-[#2a4173] rounded-lg p-6 text-center text-xs text-[#93a7cc] bg-[#0c1733]">
+              {t('ai.emptyScenesHint')}
             </div>
           ) : (
             <div className="space-y-2.5 max-h-[420px] overflow-y-auto pr-1">
@@ -916,13 +910,13 @@ export function AiVideoView({
                 return (
                   <div
                     key={idx}
-                    className="bg-[#0d1017] border border-[#1e2432] rounded-xl p-3 grid grid-cols-[74px_minmax(0,1fr)] gap-3 items-start"
+                    className="bg-[#0c1733] border border-[#1e3159] rounded-xl p-3 grid grid-cols-[74px_minmax(0,1fr)] gap-3 items-start"
                   >
-                    <div className="w-[74px] aspect-[9/16] rounded-lg bg-[#080a0f] border border-[#2d3548] overflow-hidden flex items-center justify-center text-[10px] text-[#687285] text-center p-1">
+                    <div className="w-[74px] aspect-[9/16] rounded-lg bg-[#070e20] border border-[#2a4173] overflow-hidden flex items-center justify-center text-[10px] text-[#6d83ad] text-center p-1">
                       {frame ? (
                         <img src={frame.dataUrl} alt={sc.visualTitle} className="w-full h-full object-cover" />
                       ) : (
-                        <span>Belum dirender</span>
+                        <span>{t('ai.notRendered')}</span>
                       )}
                     </div>
 
@@ -931,7 +925,7 @@ export function AiVideoView({
                         <strong className="text-white truncate">
                           {String(idx + 1).padStart(2, '0')}. {sc.visualTitle}
                         </strong>
-                        <span className="font-mono tabular-nums text-[11px] text-[#8f98a8]">
+                        <span className="font-mono tabular-nums text-[11px] text-[#93a7cc]">
                           {sc.timestampLabel} ·{' '}
                           {voice ? `${voice.durationSec.toFixed(1)}s (${voice.source === 'microphone' ? 'Mik' : 'TTS'})` : `${sc.durationSec}s`}
                         </span>
@@ -948,13 +942,13 @@ export function AiVideoView({
                             )
                           );
                         }}
-                        className="w-full bg-[#080a0f] text-[#f3f5f8] border border-[#2d3548] rounded-lg p-2 text-xs focus:outline-none focus:border-[#ff5436]"
+                        className="w-full bg-[#070e20] text-[#f1f5fc] border border-[#2a4173] rounded-lg p-2 text-xs focus:outline-none focus:border-[#ff6b00]"
                       />
 
                       <div className="flex flex-wrap items-center gap-2">
-                        <label className="px-2.5 py-1 rounded-md bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-[11px] font-semibold text-[#e8edf5] inline-flex items-center gap-1 cursor-pointer">
+                        <label className="px-2.5 py-1 rounded-md bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-[11px] font-semibold text-[#e4ecfa] inline-flex items-center gap-1 cursor-pointer">
                           <ImagePlus className="w-3 h-3" />
-                          {frame?.isCustom ? 'Ganti Gambar' : 'Unggah Gambar'}
+                          {frame?.isCustom ? t('ai.replaceImage') : t('ai.uploadImage')}
                           <input
                             type="file"
                             accept="image/*"
@@ -971,7 +965,7 @@ export function AiVideoView({
                           disabled={busy}
                           onClick={async () => {
                             try {
-                              setStatusText(`Membuat suara Adegan ${idx + 1}…`);
+                              setStatusText(`TTS ${idx + 1}…`);
                               const tr = await synthesizeOneVoice(sc);
                               setVoices((prev) => {
                                 const next = [...prev];
@@ -979,15 +973,15 @@ export function AiVideoView({
                                 next[idx] = tr;
                                 return next;
                               });
-                              setStatusText(`Suara Adegan ${idx + 1} siap.`);
+                              setStatusText(`TTS ${idx + 1} OK.`);
                             } catch (err) {
                               setStatusText(err instanceof Error ? err.message : String(err));
                             }
                           }}
-                          className="px-2.5 py-1 rounded-md bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-[11px] font-semibold text-[#e8edf5] inline-flex items-center gap-1 disabled:opacity-40 cursor-pointer"
+                          className="px-2.5 py-1 rounded-md bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-[11px] font-semibold text-[#e4ecfa] inline-flex items-center gap-1 disabled:opacity-40 cursor-pointer"
                         >
                           <Volume2 className="w-3 h-3" />
-                          Suara AI
+                          {t('ai.sceneVoiceBtn')}
                         </button>
                         <button
                           type="button"
@@ -995,11 +989,11 @@ export function AiVideoView({
                           className={`px-2.5 py-1 rounded-md border text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer ${
                             isMic
                               ? 'bg-red-950/50 border-red-500 text-red-200'
-                              : 'bg-[#181c27] hover:bg-[#212636] border-[#2d3548] text-[#e8edf5]'
+                              : 'bg-[#16264d] hover:bg-[#1e3363] border-[#2a4173] text-[#e4ecfa]'
                           }`}
                         >
                           <Mic className="w-3 h-3" />
-                          {isMic ? 'Stop Rekam' : 'Rekam Suara'}
+                          {isMic ? t('ai.stopRec') : t('ai.recVoice')}
                         </button>
                         {voice && (
                           <audio controls src={voice.url} className="h-7 max-w-[200px]" />
@@ -1014,61 +1008,61 @@ export function AiVideoView({
         </section>
 
         {/* Stage 4: Video Editing & Render */}
-        <section className="bg-[#11141c] border border-[#1e2432] rounded-xl p-5 space-y-3.5">
+        <section className="bg-[#101d3d] border border-[#1e3159] rounded-xl p-5 space-y-3.5">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-sm font-bold text-white">4. Komposisi &amp; Render Video 9:16</h2>
+            <h2 className="text-sm font-bold text-white">{t('ai.stage4Title')}</h2>
             <div className="flex items-center gap-2">
               {busy && abortControllerRef.current && (
                 <button
                   type="button"
                   onClick={() => abortControllerRef.current?.abort()}
-                  className="px-3 py-2 rounded-lg bg-[#181c27] hover:bg-red-950/50 border border-[#2d3548] text-xs font-bold text-white inline-flex items-center gap-1.5 cursor-pointer"
+                  className="px-3 py-2 rounded-lg bg-[#16264d] hover:bg-red-950/50 border border-[#2a4173] text-xs font-bold text-white inline-flex items-center gap-1.5 cursor-pointer"
                 >
                   <Square className="w-3 h-3 fill-current" />
-                  Batal
+                  {t('ai.cancelBtn')}
                 </button>
               )}
               <button
                 type="button"
                 disabled={busy || frames.length === 0}
                 onClick={() => renderFinalVideo()}
-                className="px-4 py-2 rounded-lg bg-[#ff5436] hover:bg-[#ff6b52] disabled:opacity-40 text-white text-xs font-bold cursor-pointer"
+                className="px-4 py-2 rounded-lg bg-[#ff6b00] hover:bg-[#ff8224] disabled:opacity-40 text-white text-xs font-bold cursor-pointer"
               >
-                4. Rangkai &amp; Render Video
+                {t('ai.renderFinalBtn')}
               </button>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-[11px] text-[#b7c0cf] mb-1">Efek Visual</label>
+              <label className="block text-[11px] text-[#b8c7e3] mb-1">{t('ai.visualEffect')}</label>
               <select
                 value={visualEffect}
                 onChange={(e) => setVisualEffect(e.target.value as AiVisualEffect)}
-                className="w-full bg-[#0d1017] text-[#f3f5f8] border border-[#2d3548] rounded-lg px-2.5 py-2 text-xs"
+                className="w-full bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-2.5 py-2 text-xs"
               >
-                <option value="kenburns">Ken Burns · Zoom &amp; Vignette Halus</option>
-                <option value="cinematic">Sinematik · Vignette Kontras</option>
-                <option value="pulse">Dinamis · Denyut Gerak Lembut</option>
-                <option value="none">Polos · Tanpa Efek Gerak</option>
+                <option value="kenburns">{t('ai.fxKenburns')}</option>
+                <option value="cinematic">{t('ai.fxCinematic')}</option>
+                <option value="pulse">{t('ai.fxPulse')}</option>
+                <option value="none">{t('ai.fxNone')}</option>
               </select>
             </div>
             <div>
-              <label className="block text-[11px] text-[#b7c0cf] mb-1">Transisi Antar-Adegan</label>
+              <label className="block text-[11px] text-[#b8c7e3] mb-1">{t('ai.transitionLabel')}</label>
               <select
                 value={transitionStyle}
                 onChange={(e) => setTransitionStyle(e.target.value as AiTransitionStyle)}
-                className="w-full bg-[#0d1017] text-[#f3f5f8] border border-[#2d3548] rounded-lg px-2.5 py-2 text-xs"
+                className="w-full bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-2.5 py-2 text-xs"
               >
-                <option value="fade">Fade Halus</option>
-                <option value="zoom">Cross Zoom</option>
-                <option value="slide">Geser Horizontal</option>
-                <option value="none">Potong Langsung</option>
+                <option value="fade">{t('ai.trFade')}</option>
+                <option value="zoom">{t('ai.trZoom')}</option>
+                <option value="slide">{t('ai.trSlide')}</option>
+                <option value="none">{t('ai.trNone')}</option>
               </select>
             </div>
             <div>
-              <label className="block text-[11px] text-[#b7c0cf] mb-1">
-                Penguatan Audio Narasi (<span className="font-mono">{audioGainPct}%</span>)
+              <label className="block text-[11px] text-[#b8c7e3] mb-1">
+                {t('ai.audioGain')} (<span className="font-mono">{audioGainPct}%</span>)
               </label>
               <input
                 type="range"
@@ -1080,34 +1074,34 @@ export function AiVideoView({
               />
             </div>
             <div>
-              <label className="block text-[11px] text-[#b7c0cf] mb-1">Format Render</label>
+              <label className="block text-[11px] text-[#b8c7e3] mb-1">{t('ai.renderFormat')}</label>
               <select
                 value={exportFormat}
                 onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
-                className="w-full bg-[#0d1017] text-[#f3f5f8] border border-[#2d3548] rounded-lg px-2.5 py-2 text-xs"
+                className="w-full bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-2.5 py-2 text-xs"
               >
-                <option value="webm">WebM · paling stabil</option>
-                <option value="mp4">MP4 · H.264 (jika didukung)</option>
+                <option value="webm">{t('studio.formatWebm')}</option>
+                <option value="mp4">{t('studio.formatMp4')}</option>
               </select>
             </div>
           </div>
 
           <div className="flex flex-wrap gap-5 pt-1">
-            <label className="inline-flex items-center gap-2 text-xs text-[#d6dce6] cursor-pointer">
+            <label className="inline-flex items-center gap-2 text-xs text-[#dce6f7] cursor-pointer">
               <input
                 type="checkbox"
                 checked={enhanceAudio}
                 onChange={(e) => setEnhanceAudio(e.target.checked)}
               />
-              <span>Kompresor Kejernihan Audio</span>
+              <span>{t('ai.enhanceAudio')}</span>
             </label>
-            <label className="inline-flex items-center gap-2 text-xs text-[#d6dce6] cursor-pointer">
+            <label className="inline-flex items-center gap-2 text-xs text-[#dce6f7] cursor-pointer">
               <input
                 type="checkbox"
                 checked={includeCaptions}
                 onChange={(e) => setIncludeCaptions(e.target.checked)}
               />
-              <span>Sertakan Subtitle Karaoke</span>
+              <span>{t('ai.includeCaptions')}</span>
             </label>
           </div>
 
@@ -1116,23 +1110,23 @@ export function AiVideoView({
               compact
               settings={captionSettings}
               onChange={onChangeCaptionSettings}
-              onFontReady={() => setFontTick((t) => t + 1)}
+              onFontReady={() => setFontTick((tVal) => tVal + 1)}
             />
           )}
 
           {progressPct > 0 && (
             <div className="space-y-1.5">
               <div className="flex items-center justify-between gap-2 text-xs">
-                <span className="text-[#cbd2de] truncate">{progressLabel}</span>
+                <span className="text-[#dce6f7] truncate">{progressLabel}</span>
                 <div className="flex items-center gap-2 shrink-0">
                   {busy && abortControllerRef.current && (
                     <button
                       type="button"
                       onClick={() => abortControllerRef.current?.abort()}
-                      className="px-2 py-0.5 rounded bg-[#181c27] hover:bg-red-950/50 border border-[#2d3548] text-[11px] font-semibold text-white inline-flex items-center gap-1 cursor-pointer"
+                      className="px-2 py-0.5 rounded bg-[#16264d] hover:bg-red-950/50 border border-[#2a4173] text-[11px] font-semibold text-white inline-flex items-center gap-1 cursor-pointer"
                     >
                       <Square className="w-2.5 h-2.5 fill-current" />
-                      Batal
+                      {t('ai.cancelBtn')}
                     </button>
                   )}
                   <span className="font-mono tabular-nums font-bold text-[#c7ff55]">
@@ -1140,16 +1134,16 @@ export function AiVideoView({
                   </span>
                 </div>
               </div>
-              <div className="h-1.5 bg-[#1b202c] rounded-full overflow-hidden">
+              <div className="h-1.5 bg-[#1a2d59] rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-[#ff5436] transition-all duration-150"
+                  className="h-full bg-[#ff6b00] transition-all duration-150"
                   style={{ width: `${Math.max(0, Math.min(100, progressPct))}%` }}
                 />
               </div>
             </div>
           )}
 
-          <div className="text-xs text-[#b9c2d0]">{statusText}</div>
+          <div className="text-xs text-[#b8c7e3]">{statusText || t('ai.statusInitial')}</div>
         </section>
       </div>
     </div>

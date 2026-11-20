@@ -98,7 +98,7 @@ function mapReleaseDoc(id: string, d: Record<string, unknown>): AppReleaseDoc {
     baseVersion: String(d.baseVersion || '1.5.0'),
     updateType: d.updateType === 'major' ? 'major' : 'minor',
     status: d.status === 'published' ? 'published' : 'developing',
-    title: String(d.title || 'Pembaruan Auto Clipper Studio'),
+    title: String(d.title || 'Pembaruan Paijo Clip'),
     releaseNotes: String(d.releaseNotes || ''),
     changes: rawChanges
       .slice(0, 20)

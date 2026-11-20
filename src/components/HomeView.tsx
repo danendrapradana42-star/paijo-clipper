@@ -11,6 +11,7 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react';
+import { useTranslation } from '../i18n/LanguageContext';
 import type {
   BatchQueueItem,
   SubtitleMode,
@@ -52,6 +53,7 @@ interface HomeViewProps {
 }
 
 export function HomeView(props: HomeViewProps) {
+  const { t } = useTranslation();
   const {
     activeFile,
     activeLabel,
@@ -112,14 +114,16 @@ export function HomeView(props: HomeViewProps) {
       <section className="max-w-3xl mx-auto pt-4 text-center space-y-5">
         <div className="space-y-2.5">
           <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white [text-wrap:balance]">
-            Video apa yang mau kita <span className="text-[#ff5436]">clip</span> hari ini?
+            {t('home.heroTitleBefore')}
+            <span className="text-[#ff6b00]">{t('home.heroTitleHighlight')}</span>
+            {t('home.heroTitleAfter')}
           </h1>
-          <p className="text-sm text-[#8f98a8] max-w-xl mx-auto">
-            Pilih satu atau beberapa video lokal sekaligus — potong otomatis menjadi klip vertikal 9:16 lengkap dengan subtitle kustom atau bersih tanpa teks.
+          <p className="text-sm text-[#93a7cc] max-w-xl mx-auto">
+            {t('home.heroDesc')}
           </p>
         </div>
 
-        <div className="bg-[#11141c] border border-[#2d3548] focus-within:border-[#ff5436]/70 rounded-2xl p-4 text-left transition-colors">
+        <div className="bg-[#101d3d] border border-[#2a4173] focus-within:border-[#ff6b00]/70 rounded-2xl p-4 text-left transition-colors">
           {sourceTab === 'local' ? (
             <div className="space-y-3.5">
               <div
@@ -139,22 +143,22 @@ export function HomeView(props: HomeViewProps) {
                 }}
                 onDragLeave={() => setDragOver(false)}
                 onDrop={handleDrop}
-                className={`border border-dashed rounded-xl px-5 py-7 text-center cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff5436] ${
+                className={`border border-dashed rounded-xl px-5 py-7 text-center cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff6b00] ${
                   dragOver
-                    ? 'border-[#ff5436] bg-[#ff5436]/10'
-                    : 'border-[#2d3548] bg-[#0d1017] hover:border-[#ff5436]/70'
+                    ? 'border-[#ff6b00] bg-[#ff6b00]/10'
+                    : 'border-[#2a4173] bg-[#0c1733] hover:border-[#ff6b00]/70'
                 }`}
               >
-                <FolderUp className="w-7 h-7 text-[#ff5436] mx-auto mb-2" />
+                <FolderUp className="w-7 h-7 text-[#ff6b00] mx-auto mb-2" />
                 <div className="text-sm font-bold text-white">
-                  Tarik satu atau beberapa video ke sini (Batch Processing)
+                  {t('home.dropTitle')}
                 </div>
-                <div className="text-xs text-[#8f98a8] mt-1">
-                  MP4, WebM, MOV, MKV · diproses lokal di perangkat Anda tanpa unggahan otomatis
+                <div className="text-xs text-[#93a7cc] mt-1">
+                  {t('home.dropDesc')}
                 </div>
                 {activeFile && (
                   <div className="text-xs font-mono text-[#c7ff55] mt-2 truncate">
-                    Aktif: {activeFile.name}
+                    {t('home.activeFile', { name: activeFile.name })}
                   </div>
                 )}
               </div>
@@ -184,35 +188,35 @@ export function HomeView(props: HomeViewProps) {
                 }}
               />
 
-              <div className="pt-3 border-t border-[#1e2432] flex flex-wrap items-center justify-between gap-2.5">
+              <div className="pt-3 border-t border-[#1e3159] flex flex-wrap items-center justify-between gap-2.5">
                 <div className="flex flex-wrap items-center gap-2">
                   <select
-                    aria-label="Mode subtitle"
+                    aria-label="Subtitle mode"
                     value={subtitleMode}
                     onChange={(e) => onChangeSubtitleMode(e.target.value as SubtitleMode)}
-                    className="bg-[#0d1017] text-[#e4e8f0] border border-[#2d3548] rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-[#ff5436]"
+                    className="bg-[#0c1733] text-[#e4ecfa] border border-[#2a4173] rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-[#ff6b00]"
                   >
-                    <option value="auto">Subtitle: Deteksi Jeda / AI Opt-in</option>
-                    <option value="external">Subtitle: File .srt / .vtt</option>
-                    <option value="none">Tanpa Subtitle (Bersih)</option>
+                    <option value="auto">{t('home.subModeAuto')}</option>
+                    <option value="external">{t('home.subModeExternal')}</option>
+                    <option value="none">{t('home.subModeNone')}</option>
                   </select>
                   <button
                     type="button"
                     onClick={() => srtInputRef.current?.click()}
-                    className="px-3 py-1.5 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-[#e8edf5] inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors"
+                    className="px-3 py-1.5 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-[#e4ecfa] inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors"
                   >
                     <Subtitles className="w-3.5 h-3.5 text-[#c7ff55]" />
-                    {subtitleFileName ? subtitleFileName : 'Pilih .srt/.vtt'}
+                    {subtitleFileName ? subtitleFileName : t('home.pickSrt')}
                   </button>
                 </div>
 
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-4 py-2 rounded-lg bg-[#ff5436] hover:bg-[#ff6b52] text-white text-xs font-bold inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors"
+                  className="px-4 py-2 rounded-lg bg-[#ff6b00] hover:bg-[#ff8224] text-white text-xs font-bold inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors"
                 >
                   <Upload className="w-3.5 h-3.5" />
-                  Pilih Video Lokal
+                  {t('home.pickLocalVideo')}
                 </button>
               </div>
             </div>
@@ -232,34 +236,34 @@ export function HomeView(props: HomeViewProps) {
                       onImportYoutube(ytInput, ytQuality);
                     }
                   }}
-                  placeholder="Tempel link YouTube — contoh: https://www.youtube.com/watch?v=xxxxxxxxxxx"
-                  className="flex-1 min-w-0 bg-transparent text-white placeholder:text-[#677082] text-sm px-2 py-2 focus:outline-none"
+                  placeholder={t('home.ytPlaceholder')}
+                  className="flex-1 min-w-0 bg-transparent text-white placeholder:text-[#6d83ad] text-sm px-2 py-2 focus:outline-none"
                 />
                 <button
                   type="button"
                   disabled={ytImporting}
                   onClick={() => onImportYoutube(ytInput, ytQuality)}
-                  className="w-9 h-9 rounded-lg bg-[#ff5436] hover:bg-[#ff6b52] disabled:opacity-40 text-white font-bold flex items-center justify-center shrink-0 cursor-pointer transition-colors"
-                  title="Import Link YouTube"
+                  className="w-9 h-9 rounded-lg bg-[#ff6b00] hover:bg-[#ff8224] disabled:opacity-40 text-white font-bold flex items-center justify-center shrink-0 cursor-pointer transition-colors"
+                  title={t('home.ytImportTitle')}
                 >
                   ↑
                 </button>
               </div>
 
               {ytPreview && ytPreview.id && (
-                <div className="flex items-center gap-3 p-2.5 rounded-lg bg-[#0d1017] border border-[#1e2432]">
+                <div className="flex items-center gap-3 p-2.5 rounded-lg bg-[#0c1733] border border-[#1e3159]">
                   <img
                     src={ytPreview.thumbnail}
                     alt={ytPreview.title}
                     referrerPolicy="no-referrer"
-                    className="w-24 h-14 object-cover rounded-md bg-[#08090c] shrink-0"
+                    className="w-24 h-14 object-cover rounded-md bg-[#070e20] shrink-0"
                   />
                   <div className="min-w-0 flex-1">
                     <div className="text-xs font-bold text-white truncate">{ytPreview.title}</div>
-                    <div className="text-[11px] text-[#8f98a8] font-mono truncate mt-0.5">
+                    <div className="text-[11px] text-[#93a7cc] font-mono truncate mt-0.5">
                       {ytPreview.channel}
                       {ytPreview.duration > 0 ? ` · ${formatClock(ytPreview.duration)}` : ''}
-                      {ytPreview.canDownloadDirect ? ' · Siap unduh' : ' · Info metadata siap'}
+                      {ytPreview.canDownloadDirect ? ` · ${t('home.ytReady')}` : ` · ${t('home.ytMetaReady')}`}
                     </div>
                   </div>
                 </div>
@@ -272,28 +276,28 @@ export function HomeView(props: HomeViewProps) {
                       ? 'bg-red-950/30 border-red-500/40 text-red-200'
                       : ytStatusTone === 'ok'
                         ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-200'
-                        : 'bg-[#0d1017] border-[#1e2432] text-[#cbd2de]'
+                        : 'bg-[#0c1733] border-[#1e3159] text-[#dce6f7]'
                   }`}
                 >
                   {ytStatusMsg}
                 </div>
               )}
 
-              <div className="pt-3 border-t border-[#1e2432] flex flex-wrap items-center justify-between gap-2.5">
+              <div className="pt-3 border-t border-[#1e3159] flex flex-wrap items-center justify-between gap-2.5">
                 <div className="flex items-center gap-2">
                   <select
-                    aria-label="Kualitas YouTube"
+                    aria-label="YouTube Quality"
                     value={ytQuality}
                     onChange={(e) => setYtQuality(e.target.value)}
-                    className="bg-[#0d1017] text-[#e4e8f0] border border-[#2d3548] rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-[#ff5436]"
+                    className="bg-[#0c1733] text-[#e4ecfa] border border-[#2a4173] rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-[#ff6b00]"
                   >
-                    <option value="720">Kualitas: 720p HD</option>
-                    <option value="1080">Kualitas: 1080p Full HD</option>
-                    <option value="360">Kualitas: 360p Cepat</option>
+                    <option value="720">{t('home.ytQuality720')}</option>
+                    <option value="1080">{t('home.ytQuality1080')}</option>
+                    <option value="360">{t('home.ytQuality360')}</option>
                   </select>
                 </div>
-                <div className="text-xs font-mono tabular-nums text-[#8f98a8]">
-                  Target klip {clipLengthRange} dtk · 9:16
+                <div className="text-xs font-mono tabular-nums text-[#93a7cc]">
+                  {t('home.ytTargetInfo', { range: clipLengthRange })}
                 </div>
               </div>
             </div>
@@ -307,87 +311,87 @@ export function HomeView(props: HomeViewProps) {
             onClick={() => setSourceTab('local')}
             className={`px-3.5 py-2 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors ${
               sourceTab === 'local'
-                ? 'bg-[#181c27] border-[#ff5436]/60 text-white'
-                : 'bg-[#11141c] border-[#1e2432] text-[#8f98a8] hover:text-white'
+                ? 'bg-[#16264d] border-[#ff6b00]/60 text-white'
+                : 'bg-[#101d3d] border-[#1e3159] text-[#93a7cc] hover:text-white'
             }`}
           >
             <Upload className="w-3.5 h-3.5" />
-            Upload File Lokal
+            {t('home.tabLocal')}
           </button>
           <button
             type="button"
             onClick={() => setSourceTab('youtube')}
             className={`px-3.5 py-2 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors ${
               sourceTab === 'youtube'
-                ? 'bg-[#181c27] border-[#ff5436]/60 text-white'
-                : 'bg-[#11141c] border-[#1e2432] text-[#8f98a8] hover:text-white'
+                ? 'bg-[#16264d] border-[#ff6b00]/60 text-white'
+                : 'bg-[#101d3d] border-[#1e3159] text-[#93a7cc] hover:text-white'
             }`}
           >
             <Link2 className="w-3.5 h-3.5" />
-            Link YouTube
+            {t('home.tabYoutube')}
           </button>
           <button
             type="button"
             onClick={() => onChangeSubtitleMode(subtitleMode === 'none' ? 'auto' : 'none')}
             className={`px-3.5 py-2 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors ${
               subtitleMode === 'none'
-                ? 'bg-[#181c27] border-[#c7ff55]/60 text-[#c7ff55]'
-                : 'bg-[#11141c] border-[#1e2432] text-[#8f98a8] hover:text-white'
+                ? 'bg-[#16264d] border-[#c7ff55]/60 text-[#c7ff55]'
+                : 'bg-[#101d3d] border-[#1e3159] text-[#93a7cc] hover:text-white'
             }`}
           >
-            Tanpa Subtitle
+            {t('home.tabNoSub')}
           </button>
           <button
             type="button"
             onClick={onGoAiVideo}
-            className="px-3.5 py-2 rounded-lg border border-[#1e2432] bg-[#11141c] hover:border-[#2d3548] text-[#8f98a8] hover:text-white text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors"
+            className="px-3.5 py-2 rounded-lg border border-[#1e3159] bg-[#101d3d] hover:border-[#2a4173] text-[#93a7cc] hover:text-white text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors"
           >
-            <Sparkles className="w-3.5 h-3.5 text-[#ff5436]" />
-            Buat Video AI
+            <Sparkles className="w-3.5 h-3.5 text-[#ff6b00]" />
+            {t('home.tabAiVideo')}
           </button>
         </div>
       </section>
 
       {/* Batch Queue Section */}
       {batchQueue.length > 0 && (
-        <section className="bg-[#11141c] border border-[#1e2432] rounded-xl p-5 space-y-4">
+        <section className="bg-[#101d3d] border border-[#1e3159] rounded-xl p-5 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="space-y-0.5">
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                <Layers className="w-4 h-4 text-[#ff5436]" />
-                Antrean Batch Processing
+                <Layers className="w-4 h-4 text-[#ff6b00]" />
+                {t('home.batchTitle')}
               </h2>
-              <div className="text-xs font-mono tabular-nums text-[#8f98a8]">
-                {batchQueue.length} video · {doneCount} selesai · {totalMb} MB
+              <div className="text-xs font-mono tabular-nums text-[#93a7cc]">
+                {t('home.batchMeta', { total: batchQueue.length, done: doneCount, mb: totalMb })}
               </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
               <select
-                aria-label="Tujuan batch"
+                aria-label={t('home.batchTitle')}
                 value={batchGoal}
                 disabled={batchRunning}
                 onChange={(e) => onChangeBatchGoal(e.target.value as 'auto-export' | 'analyze-only')}
-                className="bg-[#0d1017] text-[#e4e8f0] border border-[#2d3548] rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-[#ff5436] disabled:opacity-50"
+                className="bg-[#0c1733] text-[#e4ecfa] border border-[#2a4173] rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-[#ff6b00] disabled:opacity-50"
               >
-                <option value="auto-export">Analisis &amp; Ekspor Semua Klip</option>
-                <option value="analyze-only">Analisis &amp; Siapkan Klip Saja</option>
+                <option value="auto-export">{t('home.batchGoalExport')}</option>
+                <option value="analyze-only">{t('home.batchGoalAnalyze')}</option>
               </select>
               <button
                 type="button"
                 disabled={batchRunning}
                 onClick={() => fileInputRef.current?.click()}
-                className="px-3 py-1.5 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-[#e8edf5] disabled:opacity-40 cursor-pointer"
+                className="px-3 py-1.5 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-[#e4ecfa] disabled:opacity-40 cursor-pointer"
               >
-                + Tambah Video
+                {t('home.batchAdd')}
               </button>
               <button
                 type="button"
                 disabled={batchRunning || doneCount === 0}
                 onClick={onClearDoneBatch}
-                className="px-3 py-1.5 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-[#e8edf5] disabled:opacity-40 cursor-pointer"
+                className="px-3 py-1.5 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-[#e4ecfa] disabled:opacity-40 cursor-pointer"
               >
-                Bersihkan Selesai
+                {t('home.batchClearDone')}
               </button>
               {batchRunning ? (
                 <button
@@ -396,26 +400,26 @@ export function HomeView(props: HomeViewProps) {
                   className="px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
                 >
                   <Square className="w-3 h-3 fill-current" />
-                  Hentikan Antrean
+                  {t('home.batchStop')}
                 </button>
               ) : (
                 <button
                   type="button"
                   disabled={queuedCount === 0}
                   onClick={onStartBatch}
-                  className="px-4 py-1.5 rounded-lg bg-[#ff5436] hover:bg-[#ff6b52] disabled:opacity-40 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                  className="px-4 py-1.5 rounded-lg bg-[#ff6b00] hover:bg-[#ff8224] disabled:opacity-40 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
                 >
                   <Play className="w-3 h-3 fill-current" />
-                  Proses {queuedCount || batchQueue.length} Video Berurutan
+                  {t('home.batchStart', { count: queuedCount || batchQueue.length })}
                 </button>
               )}
             </div>
           </div>
 
           {batchBannerText && (
-            <div className="bg-[#0d1017] border border-[#2d3548] rounded-lg p-3 space-y-2">
+            <div className="bg-[#0c1733] border border-[#2a4173] rounded-lg p-3 space-y-2">
               <div className="flex items-center justify-between gap-3 text-xs">
-                <span className="text-[#e4e8f0]">{batchBannerText}</span>
+                <span className="text-[#e4ecfa]">{batchBannerText}</span>
                 <div className="flex items-center gap-2.5 shrink-0">
                   <span className="font-mono tabular-nums font-bold text-[#c7ff55]">
                     {Math.round(batchGlobalPct)}%
@@ -426,14 +430,14 @@ export function HomeView(props: HomeViewProps) {
                       onClick={onGoExports}
                       className="text-xs font-semibold text-[#c7ff55] hover:underline cursor-pointer"
                     >
-                      Lihat Hasil ({exportedCount}) →
+                      {t('home.batchViewExports', { count: exportedCount })}
                     </button>
                   )}
                 </div>
               </div>
-              <div className="h-1.5 bg-[#1b202c] rounded-full overflow-hidden">
+              <div className="h-1.5 bg-[#1a2d59] rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-[#ff5436] transition-all duration-200"
+                  className="h-full bg-[#ff6b00] transition-all duration-200"
                   style={{ width: `${Math.max(0, Math.min(100, batchGlobalPct))}%` }}
                 />
               </div>
@@ -449,23 +453,23 @@ export function HomeView(props: HomeViewProps) {
               return (
                 <div
                   key={item.id}
-                  className={`bg-[#0d1017] border rounded-lg px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3 ${
+                  className={`bg-[#0c1733] border rounded-lg px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3 ${
                     active
-                      ? 'border-[#ff5436]/70'
+                      ? 'border-[#ff6b00]/70'
                       : item.status === 'done'
                         ? 'border-emerald-500/40'
                         : item.status === 'error'
                           ? 'border-red-500/45'
-                          : 'border-[#1e2432]'
+                          : 'border-[#1e3159]'
                   }`}
                 >
                   <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <span className="font-mono tabular-nums text-xs font-bold text-[#687285] w-6 shrink-0">
+                    <span className="font-mono tabular-nums text-xs font-bold text-[#6d83ad] w-6 shrink-0">
                       {String(idx + 1).padStart(2, '0')}
                     </span>
                     <div className="min-w-0 flex-1 space-y-1">
                       <div className="text-xs font-bold text-white truncate">{item.name}</div>
-                      <div className="text-[11.5px] text-[#8f98a8] flex flex-wrap items-center gap-1.5">
+                      <div className="text-[11.5px] text-[#93a7cc] flex flex-wrap items-center gap-1.5">
                         <span className="font-mono tabular-nums">
                           {(item.size / (1024 * 1024)).toFixed(1)} MB
                         </span>
@@ -478,7 +482,7 @@ export function HomeView(props: HomeViewProps) {
                                 ? 'text-emerald-400 font-semibold'
                                 : item.status === 'error'
                                   ? 'text-red-400 font-semibold'
-                                  : 'text-[#cbd2de]'
+                                  : 'text-[#dce6f7]'
                           }
                         >
                           {item.statusText}
@@ -486,22 +490,24 @@ export function HomeView(props: HomeViewProps) {
                         {item.clipsCount > 0 && (
                           <>
                             <span aria-hidden="true">·</span>
-                            <span className="font-mono tabular-nums">{item.clipsCount} klip</span>
+                            <span className="font-mono tabular-nums">
+                              {t('session.clipsCount', { count: item.clipsCount })}
+                            </span>
                           </>
                         )}
                         {item.exportedCount > 0 && (
                           <>
                             <span aria-hidden="true">·</span>
                             <span className="font-mono tabular-nums text-emerald-400">
-                              {item.exportedCount} diekspor
+                              {t('home.batchExportedCount', { count: item.exportedCount })}
                             </span>
                           </>
                         )}
                       </div>
                       {active && (
-                        <div className="h-1 bg-[#1b202c] rounded-full overflow-hidden">
+                        <div className="h-1 bg-[#1a2d59] rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-[#ff5436] transition-all duration-150"
+                            className="h-full bg-[#ff6b00] transition-all duration-150"
                             style={{ width: `${Math.max(5, Math.min(100, item.progress))}%` }}
                           />
                         </div>
@@ -514,16 +520,16 @@ export function HomeView(props: HomeViewProps) {
                       type="button"
                       disabled={batchRunning}
                       onClick={() => onOpenBatchItem(item.id)}
-                      className="px-2.5 py-1.5 rounded-md bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-[#e8edf5] disabled:opacity-40 cursor-pointer"
+                      className="px-2.5 py-1.5 rounded-md bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-[#e4ecfa] disabled:opacity-40 cursor-pointer"
                     >
-                      Buka di Studio
+                      {t('home.batchOpenStudio')}
                     </button>
                     <button
                       type="button"
                       disabled={batchRunning || active}
                       onClick={() => onRemoveBatchItem(item.id)}
-                      aria-label={`Hapus ${item.name}`}
-                      className="p-1.5 rounded-md bg-[#181c27] hover:bg-red-950/50 border border-[#2d3548] text-[#8f98a8] hover:text-red-300 disabled:opacity-40 cursor-pointer"
+                      aria-label={item.name}
+                      className="p-1.5 rounded-md bg-[#16264d] hover:bg-red-950/50 border border-[#2a4173] text-[#93a7cc] hover:text-red-300 disabled:opacity-40 cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -538,40 +544,42 @@ export function HomeView(props: HomeViewProps) {
       {/* Active Session Card */}
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-bold text-white">Sesi Studio Aktif</h2>
+          <h2 className="text-sm font-bold text-white">{t('home.sessionTitle')}</h2>
           <button
             type="button"
             onClick={onGoStudio}
-            className="text-xs font-semibold text-[#cbd2de] hover:text-white inline-flex items-center gap-1 cursor-pointer"
+            className="text-xs font-semibold text-[#dce6f7] hover:text-white inline-flex items-center gap-1 cursor-pointer"
           >
-            Masuk ke Studio Editor
+            {t('home.sessionGoStudio')}
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
 
-        <div className="bg-[#11141c] border border-[#1e2432] rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
+        <div className="bg-[#101d3d] border border-[#1e3159] rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
           <div className="space-y-1 min-w-0 flex-1">
             <div className="text-sm font-bold text-white truncate">
-              {activeFile ? activeLabel || activeFile.name : 'Belum ada video dimuat'}
+              {activeFile ? activeLabel || activeFile.name : t('home.sessionNoVideo')}
             </div>
-            <div className="text-xs font-mono tabular-nums text-[#8f98a8]">
+            <div className="text-xs font-mono tabular-nums text-[#93a7cc]">
               {activeFile
-                ? `${clipsCount} kandidat klip siap · Mode: ${
-                    subtitleMode === 'none'
-                      ? 'Tanpa Subtitle'
-                      : subtitleMode === 'external'
-                        ? 'Subtitle File'
-                        : 'Otomatis / AI Opt-in'
-                  }`
-                : 'Unggah file video di atas untuk memulai pemotongan klip 9:16 secara lokal'}
+                ? t('home.sessionReadyInfo', {
+                    count: clipsCount,
+                    mode:
+                      subtitleMode === 'none'
+                        ? t('home.modeNone')
+                        : subtitleMode === 'external'
+                          ? t('home.modeExternal')
+                          : t('home.modeAuto'),
+                  })
+                : t('home.sessionEmptyInfo')}
             </div>
           </div>
           <button
             type="button"
             onClick={onGoStudio}
-            className="px-4 py-2 rounded-lg bg-[#ff5436] hover:bg-[#ff6b52] text-white text-xs font-bold whitespace-nowrap cursor-pointer transition-colors"
+            className="px-4 py-2 rounded-lg bg-[#ff6b00] hover:bg-[#ff8224] text-white text-xs font-bold whitespace-nowrap cursor-pointer transition-colors"
           >
-            {activeFile ? 'Edit & Ekspor di Studio →' : 'Buka Studio Editor'}
+            {activeFile ? t('home.ctaEditStudio') : t('home.ctaOpenStudio')}
           </button>
         </div>
       </section>

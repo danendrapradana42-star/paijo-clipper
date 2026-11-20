@@ -101,6 +101,20 @@ function formatClock(sec: number): string {
   return `${String(m).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
 }
 
+const LANGUAGE_NAME_MAP: Record<string, string> = {
+  id: 'Indonesian (Bahasa Indonesia)',
+  en: 'English',
+  es: 'Spanish (Español)',
+  pt: 'Portuguese (Português)',
+  fr: 'French (Français)',
+  de: 'German (Deutsch)',
+  ja: 'Japanese (日本語)',
+  ko: 'Korean (한국어)',
+  zh: 'Simplified Chinese (简体中文)',
+  ar: 'Arabic (العربية)',
+  hi: 'Hindi (हिन्दी)',
+};
+
 export function createApiApp(): express.Express {
   const app = express();
   app.use(express.json({ limit: '32mb' }));
@@ -145,7 +159,7 @@ export function createApiApp(): express.Express {
     const ytDlpReady = await hasYtDlp();
     const aiConfigured = Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'MY_GEMINI_API_KEY');
     res.json({
-      name: 'Auto Clipper Studio',
+      name: 'Paijo Clip',
       version: readAppPackageVersion(),
       nodeVersion: process.version,
       serverStartedAt,
@@ -171,7 +185,7 @@ export function createApiApp(): express.Express {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 7000);
         const ghRes = await fetch(`https://api.github.com/repos/${githubRepo}/releases/latest`, {
-          headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'AutoClipper-Studio' },
+          headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'PaijoClip-Studio' },
           signal: controller.signal,
         });
         clearTimeout(timer);
@@ -224,7 +238,7 @@ export function createApiApp(): express.Express {
       serverVersion: currentVersion,
       latestVersion: currentVersion,
       updateAvailable: serverAhead,
-      releaseName: `Auto Clipper Studio v${currentVersion}`,
+      releaseName: `Paijo Clip v${currentVersion}`,
       releaseNotes: '',
       releaseUrl: null,
       publishedAt: serverStartedAt,
@@ -355,7 +369,11 @@ export function createApiApp(): express.Express {
       }
 
       const ai = getAiClient();
-      const langHint = language === 'en' ? 'English' : language === 'auto' ? 'the spoken language' : 'Indonesian (Bahasa Indonesia)';
+      const langKey = String(language || 'auto').toLowerCase();
+      const langHint =
+        langKey === 'auto'
+          ? 'the spoken language'
+          : LANGUAGE_NAME_MAP[langKey] || 'Indonesian (Bahasa Indonesia)';
       const durInfo = Number(durationSec) > 0 ? `The audio duration is approximately ${Number(durationSec).toFixed(1)} seconds.` : '';
 
       const response = await withRetry(() =>
@@ -452,7 +470,7 @@ export function createApiApp(): express.Express {
       const targetTotalSec = Math.round(safeMinutes * 60);
       const targetScenes = Math.max(15, Math.min(30, Number(sceneCount) || Math.round(safeMinutes * 3)));
       const perSceneTarget = Math.max(18, Math.round(targetTotalSec / targetScenes));
-      const langLabel = language === 'en' ? 'English' : 'Indonesian (Bahasa Indonesia)';
+      const langLabel = LANGUAGE_NAME_MAP[String(language || 'id').toLowerCase()] || 'Indonesian (Bahasa Indonesia)';
       const ai = getAiClient();
 
       const response = await withRetry(() =>
@@ -657,7 +675,7 @@ Each scene must be around ${perSceneTarget} seconds long (18-26 seconds), with r
   // AI Highlight & Viral Hook Detector (adapted from autoclip highlight_v1 rubric)
   app.post('/api/clips/highlights', async (req, res) => {
     try {
-      const { cues, minDur = 30, maxDur = 90, limit = 8 } = req.body ?? {};
+      const { cues, minDur = 30, maxDur = 90, limit = 8, uiLocale } = req.body ?? {};
       if (!Array.isArray(cues) || cues.length < 3) {
         res.status(400).json({ error: 'Minimal diperlukan 3 baris subtitle untuk deteksi momen viral AI.' });
         return;
@@ -677,6 +695,7 @@ Each scene must be around ${perSceneTarget} seconds long (18-26 seconds), with r
         .map((c) => `[${c.idx} | ${formatClock(c.start)}-${formatClock(c.end)}] ${c.text}`)
         .join('\n');
 
+      const preferredLang = LANGUAGE_NAME_MAP[String(uiLocale || '').toLowerCase()] || 'English or Indonesian';
       const ai = getAiClient();
       const response = await withRetry(() =>
         ai.models.generateContent({
@@ -689,7 +708,7 @@ Judge every candidate on:
 4. Quotability.
 
 Target duration per clip: between ${Number(minDur)} and ${Number(maxDur)} seconds. Return up to ${Math.min(15, Number(limit) || 8)} highest-scoring non-overlapping clips (score 0-100, skip anything below 55).
-Write "title" and "reason" in the same language as the transcript (usually Indonesian). "hook" must quote the verbatim opening words from startCueIndex.
+Write "title" and "reason" in the same language as the transcript (or ${preferredLang} if mixed). "hook" must quote the verbatim opening words from startCueIndex.
 
 Indexed Transcript:
 ${indexedTranscript}`,

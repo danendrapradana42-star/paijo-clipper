@@ -26,6 +26,8 @@ import type {
   SubtitleMode,
   YoutubePreviewInfo,
 } from '../types/clipper';
+import { useTranslation } from '../i18n/LanguageContext';
+import { APP_LANGUAGES } from '../i18n/translations';
 import {
   createMotionState,
   drawIdleCanvas,
@@ -102,6 +104,7 @@ interface StudioViewProps {
 }
 
 export function StudioView(props: StudioViewProps) {
+  const { t } = useTranslation();
   const {
     activeTab,
     onChangeTab,
@@ -346,12 +349,12 @@ export function StudioView(props: StudioViewProps) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[316px_minmax(0,1fr)] gap-6 items-start">
       {/* Left Sticky 9:16 Live Preview */}
-      <aside className="bg-[#11141c] border border-[#1e2432] rounded-xl p-4 flex flex-col items-center gap-3 lg:sticky lg:top-20">
+      <aside className="bg-[#101d3d] border border-[#1e3159] rounded-xl p-4 flex flex-col items-center gap-3 lg:sticky lg:top-20">
         <div
-          className="w-full text-center text-xs font-semibold truncate pb-2 border-b border-[#1e2432] text-[#c7ff55]"
-          title={activeLabel || 'Belum ada video dimuat'}
+          className="w-full text-center text-xs font-semibold truncate pb-2 border-b border-[#1e3159] text-[#c7ff55]"
+          title={activeLabel || t('studio.noVideo')}
         >
-          {activeLabel || 'Belum ada video dimuat'}
+          {activeLabel || t('studio.noVideo')}
         </div>
 
         <div className="relative w-full max-w-[264px]">
@@ -359,42 +362,42 @@ export function StudioView(props: StudioViewProps) {
             ref={canvasRef}
             width={720}
             height={1280}
-            className="w-full aspect-[9/16] bg-[#06080c] border border-[#2d3548] rounded-xl shadow-xl block"
+            className="w-full aspect-[9/16] bg-[#070e20] border border-[#2a4173] rounded-xl shadow-xl block"
           />
 
           {aiTranscribing && (
-            <div className="absolute inset-0 rounded-xl bg-[#08090c]/88 backdrop-blur-sm border border-[#ff5436]/50 p-4 flex flex-col items-center justify-center text-center gap-3">
-              <div className="text-[11px] font-bold tracking-wide text-[#ff5436]">
-                MEMBUAT SUBTITLE AI
+            <div className="absolute inset-0 rounded-xl bg-[#070e20]/88 backdrop-blur-sm border border-[#ff6b00]/50 p-4 flex flex-col items-center justify-center text-center gap-3">
+              <div className="text-[11px] font-bold tracking-wide text-[#ff6b00]">
+                {t('studio.aiTranscribingBadge')}
               </div>
               <div className="font-mono tabular-nums text-3xl font-extrabold text-white">
                 {transcribeEstimatedSec > transcribeElapsedSec
                   ? formatClock(transcribeEstimatedSec - transcribeElapsedSec)
                   : '±0:02'}
               </div>
-              <div className="text-[11px] font-mono tabular-nums text-[#8f98a8]">
+              <div className="text-[11px] font-mono tabular-nums text-[#93a7cc]">
                 {transcribeEstimatedSec > transcribeElapsedSec
-                  ? `Estimasi sisa · berjalan ${formatClock(transcribeElapsedSec)}`
-                  : `Menyelesaikan · berjalan ${formatClock(transcribeElapsedSec)}`}
+                  ? t('studio.estRemaining', { elapsed: formatClock(transcribeElapsedSec) })
+                  : t('studio.finishing', { elapsed: formatClock(transcribeElapsedSec) })}
               </div>
               <div className="w-full max-w-[190px] space-y-1.5">
-                <div className="h-1.5 bg-[#1b202c] rounded-full overflow-hidden">
+                <div className="h-1.5 bg-[#1a2d59] rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-[#ff5436] transition-all duration-300"
+                    className="h-full bg-[#ff6b00] transition-all duration-300"
                     style={{ width: `${Math.max(6, Math.min(98, Math.round(transcribeProgressPct)))}%` }}
                   />
                 </div>
-                <div className="text-[11px] text-[#cbd2de] leading-snug">
+                <div className="text-[11px] text-[#dce6f7] leading-snug">
                   {transcribeStageLabel}
                 </div>
               </div>
               <button
                 type="button"
                 onClick={onCancelAiTranscribe}
-                className="mt-1 px-3.5 py-1.5 rounded-lg bg-[#181c27] hover:bg-red-950/60 border border-[#2d3548] hover:border-red-500/60 text-xs font-bold text-white inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                className="mt-1 px-3.5 py-1.5 rounded-lg bg-[#16264d] hover:bg-red-950/60 border border-[#2a4173] hover:border-red-500/60 text-xs font-bold text-white inline-flex items-center gap-1.5 cursor-pointer transition-colors"
               >
                 <X className="w-3.5 h-3.5" />
-                Batalkan
+                {t('studio.cancel')}
               </button>
             </div>
           )}
@@ -402,18 +405,22 @@ export function StudioView(props: StudioViewProps) {
 
         <div className="w-full space-y-2.5">
           <select
-            aria-label="Pilih klip pratinjau"
+            aria-label={t('studio.noClipsOption')}
             disabled={!clips.length || exporting}
             value={activeClip ? String(selectedClipIdx) : ''}
             onChange={(e) => selectClipForPreview(Number(e.target.value))}
-            className="w-full bg-[#0d1017] text-[#f3f5f8] border border-[#2d3548] rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#ff5436] disabled:opacity-45"
+            className="w-full bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#ff6b00] disabled:opacity-45"
           >
             {clips.length === 0 ? (
-              <option value="">Belum ada potongan klip</option>
+              <option value="">{t('studio.noClipsOption')}</option>
             ) : (
               clips.map((c, idx) => (
                 <option key={c.id} value={idx}>
-                  Klip {idx + 1} · {formatClock(c.start)}–{formatClock(c.end)}
+                  {t('studio.clipOption', {
+                    idx: idx + 1,
+                    start: formatClock(c.start),
+                    end: formatClock(c.end),
+                  })}
                 </option>
               ))
             )}
@@ -424,17 +431,17 @@ export function StudioView(props: StudioViewProps) {
               type="button"
               disabled={!videoReady || exporting}
               onClick={handleTogglePlay}
-              className="py-2 px-3 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-white inline-flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer"
+              className="py-2 px-3 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-white inline-flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer"
             >
               {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-              {isPlaying ? 'Jeda' : 'Putar'}
+              {isPlaying ? t('studio.pause') : t('studio.play')}
             </button>
             <button
               type="button"
               disabled={!videoReady || exporting}
               onClick={() => handleStep(-2)}
-              title="Mundur 2 detik (Panah Kiri)"
-              className="px-2.5 py-2 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-[11px] font-mono text-[#cbd2de] disabled:opacity-40 cursor-pointer"
+              title={t('studio.stepBack')}
+              className="px-2.5 py-2 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-[11px] font-mono text-[#dce6f7] disabled:opacity-40 cursor-pointer"
             >
               -2s
             </button>
@@ -442,21 +449,21 @@ export function StudioView(props: StudioViewProps) {
               type="button"
               disabled={!videoReady || exporting}
               onClick={() => handleStep(2)}
-              title="Maju 2 detik (Panah Kanan)"
-              className="px-2.5 py-2 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-[11px] font-mono text-[#cbd2de] disabled:opacity-40 cursor-pointer"
+              title={t('studio.stepForward')}
+              className="px-2.5 py-2 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-[11px] font-mono text-[#dce6f7] disabled:opacity-40 cursor-pointer"
             >
               +2s
             </button>
           </div>
 
           {/* Preview Sound Volume & Mute */}
-          <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-[#0d1017] border border-[#1e2432]">
+          <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-[#0c1733] border border-[#1e3159]">
             <button
               type="button"
               disabled={!videoReady || exporting}
               onClick={() => setPreviewMuted((m) => !m)}
-              title={previewMuted ? 'Nyalakan suara pratinjau' : 'Bisukan suara pratinjau'}
-              className="p-1 text-[#cbd2de] hover:text-white disabled:opacity-40 cursor-pointer"
+              title={previewMuted ? t('studio.unmutePreview') : t('studio.mutePreview')}
+              className="p-1 text-[#dce6f7] hover:text-white disabled:opacity-40 cursor-pointer"
             >
               {previewMuted || previewVolume === 0 ? (
                 <VolumeX className="w-3.5 h-3.5 text-[#f87171]" />
@@ -466,7 +473,7 @@ export function StudioView(props: StudioViewProps) {
             </button>
             <input
               type="range"
-              aria-label="Volume suara pratinjau"
+              aria-label={t('studio.mutePreview')}
               min={0}
               max={100}
               disabled={!videoReady || exporting}
@@ -478,14 +485,14 @@ export function StudioView(props: StudioViewProps) {
               }}
               className="flex-1 cursor-pointer disabled:opacity-40"
             />
-            <span className="font-mono tabular-nums text-[10.5px] text-[#8f98a8] w-8 text-right">
+            <span className="font-mono tabular-nums text-[10.5px] text-[#93a7cc] w-8 text-right">
               {previewMuted ? '0%' : `${Math.round(previewVolume * 100)}%`}
             </span>
           </div>
 
           <input
             type="range"
-            aria-label="Timeline klip"
+            aria-label="Timeline"
             min={0}
             max={1000}
             disabled={!videoReady || exporting}
@@ -494,7 +501,7 @@ export function StudioView(props: StudioViewProps) {
             className="w-full cursor-pointer disabled:opacity-40"
           />
 
-          <div className="flex items-center justify-between text-[11px] font-mono tabular-nums text-[#8f98a8]">
+          <div className="flex items-center justify-between text-[11px] font-mono tabular-nums text-[#93a7cc]">
             <span>{videoReady ? formatTimeDecimal(currentTime) : '0:00.0'}</span>
             <span>
               {activeClip
@@ -510,19 +517,17 @@ export function StudioView(props: StudioViewProps) {
                 type="button"
                 disabled={exporting}
                 onClick={() => onSetClipRange(activeClip.id, currentTime, activeClip.end)}
-                className="py-1.5 px-2 rounded-md bg-[#0d1017] hover:bg-[#181c27] border border-[#2d3548] text-[11px] font-semibold text-[#cbd2de] disabled:opacity-40 cursor-pointer"
-                title="Jadikan posisi playhead sebagai awal klip"
+                className="py-1.5 px-2 rounded-md bg-[#0c1733] hover:bg-[#16264d] border border-[#2a4173] text-[11px] font-semibold text-[#dce6f7] disabled:opacity-40 cursor-pointer"
               >
-                [ Set Awal Klip
+                {t('studio.setClipStart')}
               </button>
               <button
                 type="button"
                 disabled={exporting}
                 onClick={() => onSetClipRange(activeClip.id, activeClip.start, currentTime)}
-                className="py-1.5 px-2 rounded-md bg-[#0d1017] hover:bg-[#181c27] border border-[#2d3548] text-[11px] font-semibold text-[#cbd2de] disabled:opacity-40 cursor-pointer"
-                title="Jadikan posisi playhead sebagai akhir klip"
+                className="py-1.5 px-2 rounded-md bg-[#0c1733] hover:bg-[#16264d] border border-[#2a4173] text-[11px] font-semibold text-[#dce6f7] disabled:opacity-40 cursor-pointer"
               >
-                Set Akhir Klip ]
+                {t('studio.setClipEnd')}
               </button>
             </div>
           )}
@@ -530,21 +535,21 @@ export function StudioView(props: StudioViewProps) {
           {/* Decoded Audio Waveform Overview */}
           {audioEnv && audioEnv.peaks.length > 0 && videoDuration > 0 && (
             <div className="pt-1 space-y-1">
-              <div className="h-8 bg-[#08090c] border border-[#1e2432] rounded-md px-1 flex items-center gap-[1px] overflow-hidden relative">
+              <div className="h-8 bg-[#070e20] border border-[#1e3159] rounded-md px-1 flex items-center gap-[1px] overflow-hidden relative">
                 {audioEnv.peaks.map((pk, idx) => {
                   const barTime = (idx / audioEnv.peaks.length) * videoDuration;
                   const insideClip = activeClip && barTime >= activeClip.start && barTime <= activeClip.end;
                   return (
                     <span
                       key={idx}
-                      className={`flex-1 rounded-full ${insideClip ? 'bg-[#ff5436]' : 'bg-[#2d3548]'}`}
+                      className={`flex-1 rounded-full ${insideClip ? 'bg-[#ff6b00]' : 'bg-[#2a4173]'}`}
                       style={{ height: `${Math.round(pk * 88)}%` }}
                     />
                   );
                 })}
               </div>
-              <div className="text-[10.5px] font-mono tabular-nums text-[#687285] text-center">
-                {videoDims.w}×{videoDims.h} · {formatClock(videoDuration)} · Spasi: Putar/Jeda
+              <div className="text-[10.5px] font-mono tabular-nums text-[#6d83ad] text-center">
+                {videoDims.w}×{videoDims.h} · {formatClock(videoDuration)} · {t('studio.spaceShortcut')}
               </div>
             </div>
           )}
@@ -556,8 +561,8 @@ export function StudioView(props: StudioViewProps) {
         {/* 3-Tab Studio Navigation */}
         <div
           role="tablist"
-          aria-label="Panel Pengaturan Studio"
-          className="grid grid-cols-3 gap-1 p-1 bg-[#11141c] border border-[#1e2432] rounded-xl"
+          aria-label="Studio Settings"
+          className="grid grid-cols-3 gap-1 p-1 bg-[#101d3d] border border-[#1e3159] rounded-xl"
         >
           <button
             type="button"
@@ -566,11 +571,11 @@ export function StudioView(props: StudioViewProps) {
             onClick={() => onChangeTab('clips')}
             className={`py-2 px-3 rounded-lg text-xs font-semibold truncate cursor-pointer transition-colors ${
               activeTab === 'clips'
-                ? 'bg-[#181c27] text-white border border-[#2d3548]'
-                : 'text-[#8f98a8] hover:text-white'
+                ? 'bg-[#16264d] text-white border border-[#2a4173]'
+                : 'text-[#93a7cc] hover:text-white'
             }`}
           >
-            1. Subtitle &amp; Klip
+            {t('studio.tabClips')}
           </button>
           <button
             type="button"
@@ -579,11 +584,11 @@ export function StudioView(props: StudioViewProps) {
             onClick={() => onChangeTab('style')}
             className={`py-2 px-3 rounded-lg text-xs font-semibold truncate cursor-pointer transition-colors ${
               activeTab === 'style'
-                ? 'bg-[#181c27] text-white border border-[#2d3548]'
-                : 'text-[#8f98a8] hover:text-white'
+                ? 'bg-[#16264d] text-white border border-[#2a4173]'
+                : 'text-[#93a7cc] hover:text-white'
             }`}
           >
-            2. Font &amp; Gaya Teks
+            {t('studio.tabStyle')}
           </button>
           <button
             type="button"
@@ -592,84 +597,84 @@ export function StudioView(props: StudioViewProps) {
             onClick={() => onChangeTab('export')}
             className={`py-2 px-3 rounded-lg text-xs font-semibold truncate cursor-pointer transition-colors ${
               activeTab === 'export'
-                ? 'bg-[#181c27] text-white border border-[#2d3548]'
-                : 'text-[#8f98a8] hover:text-white'
+                ? 'bg-[#16264d] text-white border border-[#2a4173]'
+                : 'text-[#93a7cc] hover:text-white'
             }`}
           >
-            3. Framing &amp; Ekspor
+            {t('studio.tabExport')}
           </button>
         </div>
 
         {/* TAB 1: SUBTITLE & CLIPS */}
         {activeTab === 'clips' && (
           <div className="space-y-4">
-            <div className="bg-[#11141c] border border-[#1e2432] rounded-xl p-5 space-y-4">
+            <div className="bg-[#101d3d] border border-[#1e3159] rounded-xl p-5 space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <h2 className="text-sm font-bold text-white">Sumber Subtitle &amp; Pemotongan Klip</h2>
-                  <p className="text-xs text-[#8f98a8] mt-0.5">
-                    Pilih analisis jeda audio lokal, impor .srt/.vtt, atau aktifkan transkripsi AI opt-in.
+                  <h2 className="text-sm font-bold text-white">{t('studio.sourceTitle')}</h2>
+                  <p className="text-xs text-[#93a7cc] mt-0.5">
+                    {t('studio.sourceDesc')}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={onChangeSourceHome}
-                  className="px-3 py-1.5 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-[#e8edf5] cursor-pointer"
+                  className="px-3 py-1.5 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-[#e4ecfa] cursor-pointer"
                 >
-                  Ganti Video
+                  {t('studio.changeVideo')}
                 </button>
               </div>
 
-              <div className="grid grid-cols-3 gap-1 p-1 bg-[#0d1017] border border-[#1e2432] rounded-lg">
+              <div className="grid grid-cols-3 gap-1 p-1 bg-[#0c1733] border border-[#1e3159] rounded-lg">
                 <button
                   type="button"
                   onClick={() => onChangeSubtitleMode('auto')}
                   className={`py-2 px-2.5 rounded-md text-xs font-semibold truncate cursor-pointer transition-colors ${
                     subtitleMode === 'auto'
-                      ? 'bg-[#181c27] text-white border border-[#2d3548]'
-                      : 'text-[#8f98a8] hover:text-white'
+                      ? 'bg-[#16264d] text-white border border-[#2a4173]'
+                      : 'text-[#93a7cc] hover:text-white'
                   }`}
                 >
-                  Otomatis (Lokal / AI)
+                  {t('studio.modeAuto')}
                 </button>
                 <button
                   type="button"
                   onClick={() => onChangeSubtitleMode('external')}
                   className={`py-2 px-2.5 rounded-md text-xs font-semibold truncate cursor-pointer transition-colors ${
                     subtitleMode === 'external'
-                      ? 'bg-[#181c27] text-white border border-[#2d3548]'
-                      : 'text-[#8f98a8] hover:text-white'
+                      ? 'bg-[#16264d] text-white border border-[#2a4173]'
+                      : 'text-[#93a7cc] hover:text-white'
                   }`}
                 >
-                  File .srt / .vtt
+                  {t('studio.modeExternal')}
                 </button>
                 <button
                   type="button"
                   onClick={() => onChangeSubtitleMode('none')}
                   className={`py-2 px-2.5 rounded-md text-xs font-semibold truncate cursor-pointer transition-colors ${
                     subtitleMode === 'none'
-                      ? 'bg-[#181c27] text-[#c7ff55] border border-[#2d3548]'
-                      : 'text-[#8f98a8] hover:text-white'
+                      ? 'bg-[#16264d] text-[#c7ff55] border border-[#2a4173]'
+                      : 'text-[#93a7cc] hover:text-white'
                   }`}
                 >
-                  Tanpa Subtitle
+                  {t('studio.modeNone')}
                 </button>
               </div>
 
               {subtitleMode !== 'none' && (
-                <div className="bg-[#0d1017] border border-[#1e2432] rounded-lg p-3.5 space-y-3">
+                <div className="bg-[#0c1733] border border-[#1e3159] rounded-lg p-3.5 space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="min-w-0 flex-1">
-                      <div className="text-xs font-semibold text-[#e4e8f0] flex items-center gap-1.5">
+                      <div className="text-xs font-semibold text-[#e4ecfa] flex items-center gap-1.5">
                         <Subtitles className="w-3.5 h-3.5 text-[#c7ff55]" />
-                        Subtitle Eksternal (.srt / .vtt)
+                        {t('studio.extSubTitle')}
                       </div>
-                      <div className="text-[11.5px] font-mono text-[#8f98a8] truncate mt-0.5">
+                      <div className="text-[11.5px] font-mono text-[#93a7cc] truncate mt-0.5">
                         {importedSubName
-                          ? `${importedSubName} · ${cues.length} baris aktif`
+                          ? t('studio.cuesActiveNamed', { name: importedSubName, count: cues.length })
                           : cues.length > 0
-                            ? `${cues.length} baris subtitle aktif`
-                            : 'Belum ada subtitle teks · klik Pilih .srt/.vtt atau gunakan Transkripsi AI'}
+                            ? t('studio.cuesActiveCount', { count: cues.length })
+                            : t('studio.noCuesYet')}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -687,18 +692,18 @@ export function StudioView(props: StudioViewProps) {
                       <button
                         type="button"
                         onClick={() => srtInputRef.current?.click()}
-                        className="px-3 py-1.5 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-white inline-flex items-center gap-1.5 cursor-pointer"
+                        className="px-3 py-1.5 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-white inline-flex items-center gap-1.5 cursor-pointer"
                       >
                         <Upload className="w-3.5 h-3.5" />
-                        Pilih .srt/.vtt
+                        {t('home.pickSrt')}
                       </button>
                       {importedSubName && (
                         <button
                           type="button"
                           onClick={onResetSubtitleFile}
-                          className="px-2.5 py-1.5 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs text-[#cbd2de] cursor-pointer"
+                          className="px-2.5 py-1.5 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs text-[#dce6f7] cursor-pointer"
                         >
-                          Reset
+                          {t('studio.reset')}
                         </button>
                       )}
                     </div>
@@ -706,33 +711,34 @@ export function StudioView(props: StudioViewProps) {
 
                   {/* Opt-in AI Speech-to-Text Section */}
                   {subtitleMode === 'auto' && (
-                    <div className="pt-3 border-t border-[#1e2432] space-y-2.5">
+                    <div className="pt-3 border-t border-[#1e3159] space-y-2.5">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="text-xs font-semibold text-white flex items-center gap-1.5">
-                          <Sparkles className="w-3.5 h-3.5 text-[#ff5436]" />
-                          Transkripsi Ucapan AI (Opsional · Opt-in)
+                          <Sparkles className="w-3.5 h-3.5 text-[#ff6b00]" />
+                          {t('studio.aiSttTitle')}
                         </div>
                         <select
-                          aria-label="Bahasa ucapan"
+                          aria-label={t('studio.aiSttTitle')}
                           value={aiTranscribeLang}
                           onChange={(e) => onChangeAiTranscribeLang(e.target.value)}
-                          className="bg-[#11141c] text-[#e4e8f0] border border-[#2d3548] rounded-md px-2.5 py-1 text-xs"
+                          className="bg-[#101d3d] text-[#e4ecfa] border border-[#2a4173] rounded-md px-2.5 py-1 text-xs"
                         >
-                          <option value="id">Bahasa Indonesia</option>
-                          <option value="en">English</option>
-                          <option value="auto">Deteksi Otomatis</option>
+                          {APP_LANGUAGES.map((lang) => (
+                            <option key={lang.code} value={lang.code}>
+                              {lang.nativeName}
+                            </option>
+                          ))}
+                          <option value="auto">{t('studio.langAuto')}</option>
                         </select>
                       </div>
-                      <label className="flex items-start gap-2 text-xs text-[#b7c0cf] cursor-pointer select-none">
+                      <label className="flex items-start gap-2 text-xs text-[#b8c7e3] cursor-pointer select-none">
                         <input
                           type="checkbox"
                           checked={aiTranscribeConsent}
                           onChange={(e) => onChangeAiTranscribeConsent(e.target.checked)}
                           className="mt-0.5"
                         />
-                        <span>
-                          Saya setuju mengekstrak audio video ini dan mengirimnya ke server untuk membuat subtitle otomatis (Gemini Transcribe). Video tetap di perangkat Anda.
-                        </span>
+                        <span>{t('studio.aiConsentText')}</span>
                       </label>
                       {transcribeError && !aiTranscribing && (
                         <div className="p-2.5 rounded-lg bg-red-950/35 border border-red-500/45 text-xs text-red-200 flex flex-wrap items-center justify-between gap-2">
@@ -744,7 +750,7 @@ export function StudioView(props: StudioViewProps) {
                             className="px-2.5 py-1 rounded-md bg-red-500/20 hover:bg-red-500/35 border border-red-400/40 text-xs font-bold text-white inline-flex items-center gap-1 cursor-pointer"
                           >
                             <RotateCcw className="w-3 h-3" />
-                            Coba Lagi
+                            {t('studio.retry')}
                           </button>
                         </div>
                       )}
@@ -752,11 +758,13 @@ export function StudioView(props: StudioViewProps) {
                       <div className="flex flex-wrap items-center gap-2">
                         {aiTranscribing ? (
                           <>
-                            <div className="flex-1 py-2 px-3 rounded-lg bg-[#181c27] border border-[#2d3548] text-xs font-semibold text-[#cbd2de] flex items-center justify-between gap-2">
+                            <div className="flex-1 py-2 px-3 rounded-lg bg-[#16264d] border border-[#2a4173] text-xs font-semibold text-[#dce6f7] flex items-center justify-between gap-2">
                               <span className="truncate">{transcribeStageLabel}</span>
                               <span className="font-mono tabular-nums text-[#c7ff55] shrink-0">
                                 {transcribeEstimatedSec > transcribeElapsedSec
-                                  ? `Sisa ±${formatClock(transcribeEstimatedSec - transcribeElapsedSec)}`
+                                  ? t('studio.remainingShort', {
+                                      time: formatClock(transcribeEstimatedSec - transcribeElapsedSec),
+                                    })
                                   : formatClock(transcribeElapsedSec)}
                               </span>
                             </div>
@@ -766,7 +774,7 @@ export function StudioView(props: StudioViewProps) {
                               className="py-2 px-3.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-colors"
                             >
                               <X className="w-3.5 h-3.5" />
-                              Batalkan
+                              {t('studio.cancel')}
                             </button>
                           </>
                         ) : (
@@ -775,17 +783,17 @@ export function StudioView(props: StudioViewProps) {
                               type="button"
                               disabled={!videoReady || !aiTranscribeConsent || exporting}
                               onClick={onRunAiTranscribe}
-                              className="flex-1 py-2 px-4 rounded-lg bg-[#ff5436] hover:bg-[#ff6b52] disabled:opacity-40 text-white text-xs font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                              className="flex-1 py-2 px-4 rounded-lg bg-[#ff6b00] hover:bg-[#ff8224] disabled:opacity-40 text-white text-xs font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
                             >
                               {cues.length > 0 ? (
                                 <>
                                   <RotateCcw className="w-3.5 h-3.5" />
-                                  Buat Ulang Subtitle (Regenerate)
+                                  {t('studio.regenerateSub')}
                                 </>
                               ) : (
                                 <>
                                   <Sparkles className="w-3.5 h-3.5" />
-                                  Buat Subtitle Otomatis (Transkripsi AI)
+                                  {t('studio.generateSub')}
                                 </>
                               )}
                             </button>
@@ -800,31 +808,31 @@ export function StudioView(props: StudioViewProps) {
               {/* Clip Parameters */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 <div>
-                  <label className="block text-[11.5px] text-[#b7c0cf] font-medium mb-1">
-                    Durasi Klip Target
+                  <label className="block text-[11.5px] text-[#b8c7e3] font-medium mb-1">
+                    {t('studio.clipTargetDur')}
                   </label>
                   <select
                     value={clipLengthRange}
                     onChange={(e) => onChangeClipLengthRange(e.target.value)}
-                    className="w-full bg-[#0d1017] text-[#f3f5f8] border border-[#2d3548] rounded-lg px-3 py-2 text-xs"
+                    className="w-full bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-3 py-2 text-xs"
                   >
-                    <option value="30-60">30–60 detik</option>
-                    <option value="60-90">60–90 detik</option>
-                    <option value="90-150">90–150 detik</option>
+                    <option value="30-60">30–60 {t('studio.secSuffix')}</option>
+                    <option value="60-90">60–90 {t('studio.secSuffix')}</option>
+                    <option value="90-150">90–150 {t('studio.secSuffix')}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11.5px] text-[#b7c0cf] font-medium mb-1">
-                    Jumlah Klip Maksimal
+                  <label className="block text-[11.5px] text-[#b8c7e3] font-medium mb-1">
+                    {t('studio.clipMaxCount')}
                   </label>
                   <select
                     value={clipLimit}
                     onChange={(e) => onChangeClipLimit(Number(e.target.value))}
-                    className="w-full bg-[#0d1017] text-[#f3f5f8] border border-[#2d3548] rounded-lg px-3 py-2 text-xs"
+                    className="w-full bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-3 py-2 text-xs"
                   >
                     {[3, 5, 8, 10, 12, 15, 20].map((n) => (
                       <option key={n} value={n}>
-                        {n} klip
+                        {t('session.clipsCount', { count: n })}
                       </option>
                     ))}
                   </select>
@@ -834,62 +842,62 @@ export function StudioView(props: StudioViewProps) {
                     type="button"
                     disabled={!videoReady || exporting}
                     onClick={onReanalyzeClips}
-                    className="flex-1 py-2 px-3 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-white inline-flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer whitespace-nowrap"
+                    className="flex-1 py-2 px-3 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-white inline-flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer whitespace-nowrap"
                   >
                     <Scissors className="w-3.5 h-3.5 text-[#c7ff55]" />
-                    Potong Ulang
+                    {t('studio.reanalyze')}
                   </button>
                   <button
                     type="button"
                     disabled={!videoReady || cues.length < 3 || exporting || aiFindingHighlights}
                     onClick={onFindAiHighlights}
-                    title={cues.length < 3 ? 'Buat atau unggah subtitle terlebih dahulu' : 'Pilih momen viral terbaik dengan AI'}
-                    className="flex-1 py-2 px-3 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-[#c7ff55] inline-flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer whitespace-nowrap"
+                    title={cues.length < 3 ? t('studio.aiHighlightsNeedSub') : t('studio.aiHighlightsTip')}
+                    className="flex-1 py-2 px-3 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-[#c7ff55] inline-flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer whitespace-nowrap"
                   >
-                    <Sparkles className="w-3.5 h-3.5 text-[#ff5436]" />
-                    {aiFindingHighlights ? 'Menganalisis…' : 'Momen Viral AI'}
+                    <Sparkles className="w-3.5 h-3.5 text-[#ff6b00]" />
+                    {aiFindingHighlights ? t('studio.analyzing') : t('studio.aiHighlights')}
                   </button>
                 </div>
               </div>
 
               {/* Inline Subtitle Text Editor */}
               {cues.length > 0 && subtitleMode !== 'none' && (
-                <div className="pt-2 border-t border-[#1e2432] space-y-2">
+                <div className="pt-2 border-t border-[#1e3159] space-y-2">
                   <button
                     type="button"
                     onClick={() => setShowTranscriptEditor((v) => !v)}
                     className="text-xs font-bold text-[#c7ff55] hover:underline cursor-pointer"
                   >
                     {showTranscriptEditor
-                      ? '▾ Sembunyikan editor teks subtitle'
-                      : `▸ Lihat & perbaiki ${cues.length} baris teks subtitle`}
+                      ? t('studio.hideTranscriptEditor')
+                      : t('studio.showTranscriptEditor', { count: cues.length })}
                   </button>
                   {showTranscriptEditor && (
                     <div className="space-y-2">
-                      <div className="text-[11px] text-[#8f98a8]">
-                        Edit teks langsung lalu klik Terapkan. Pertahankan format <code>[waktu → waktu] teks</code>.
+                      <div className="text-[11px] text-[#93a7cc]">
+                        {t('studio.transcriptEditHint')}
                       </div>
                       <textarea
                         value={transcriptEditorText}
                         onChange={(e) => onChangeTranscriptEditorText(e.target.value)}
                         rows={7}
-                        className="w-full bg-[#07090d] text-[#e3e7ee] border border-[#2d3548] rounded-lg p-2.5 font-mono text-xs leading-relaxed focus:outline-none focus:border-[#ff5436]"
+                        className="w-full bg-[#070e20] text-[#e4ecfa] border border-[#2a4173] rounded-lg p-2.5 font-mono text-xs leading-relaxed focus:outline-none focus:border-[#ff6b00]"
                       />
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
                           onClick={onApplyTranscriptEdit}
-                          className="px-3 py-1.5 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-white cursor-pointer"
+                          className="px-3 py-1.5 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-white cursor-pointer"
                         >
-                          Terapkan Perbaikan
+                          {t('studio.applyEdits')}
                         </button>
                         <button
                           type="button"
                           onClick={onDownloadSrt}
-                          className="px-3 py-1.5 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-[#cbd2de] inline-flex items-center gap-1.5 cursor-pointer"
+                          className="px-3 py-1.5 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-[#dce6f7] inline-flex items-center gap-1.5 cursor-pointer"
                         >
                           <Download className="w-3.5 h-3.5" />
-                          Unduh .srt
+                          {t('studio.downloadSrt')}
                         </button>
                       </div>
                     </div>
@@ -899,23 +907,23 @@ export function StudioView(props: StudioViewProps) {
             </div>
 
             {/* Clip List with Interactive Fine-Trim */}
-            <div className="bg-[#11141c] border border-[#1e2432] rounded-xl p-5 space-y-3">
+            <div className="bg-[#101d3d] border border-[#1e3159] rounded-xl p-5 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h2 className="text-sm font-bold text-white">
-                    Daftar Potongan Klip ({selectedCount}/{clips.length} dipilih)
+                    {t('studio.clipListTitle', { selected: selectedCount, total: clips.length })}
                   </h2>
-                  <p className="text-xs text-[#8f98a8]">
-                    Klik kartu untuk pratinjau, atau geser awal/akhir klip ±0.5 detik.
+                  <p className="text-xs text-[#93a7cc]">
+                    {t('studio.clipListDesc')}
                   </p>
                 </div>
                 <button
                   type="button"
                   disabled={!clips.length}
                   onClick={() => onChangeTab('export')}
-                  className="px-3.5 py-1.5 rounded-lg bg-[#ff5436] hover:bg-[#ff6b52] disabled:opacity-40 text-white text-xs font-bold cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-lg bg-[#ff6b00] hover:bg-[#ff8224] disabled:opacity-40 text-white text-xs font-bold cursor-pointer"
                 >
-                  Lanjut ke Ekspor →
+                  {t('studio.nextToExport')}
                 </button>
               </div>
 
@@ -932,8 +940,8 @@ export function StudioView(props: StudioViewProps) {
               )}
 
               {clips.length === 0 ? (
-                <div className="border border-dashed border-[#2d3548] rounded-lg p-6 text-center text-xs text-[#8f98a8] bg-[#0d1017]">
-                  Pilih video lokal di Beranda untuk melihat daftar kandidat klip 9:16.
+                <div className="border border-dashed border-[#2a4173] rounded-lg p-6 text-center text-xs text-[#93a7cc] bg-[#0c1733]">
+                  {t('studio.emptyClipsHint')}
                 </div>
               ) : (
                 <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
@@ -945,8 +953,8 @@ export function StudioView(props: StudioViewProps) {
                         onClick={() => selectClipForPreview(idx)}
                         className={`rounded-xl border p-3.5 cursor-pointer transition-colors space-y-2 ${
                           isActive
-                            ? 'bg-[#151924] border-[#ff5436]/70'
-                            : 'bg-[#0d1017] border-[#1e2432] hover:border-[#2d3548]'
+                            ? 'bg-[#142347] border-[#ff6b00]/70'
+                            : 'bg-[#0c1733] border-[#1e3159] hover:border-[#2a4173]'
                         }`}
                       >
                         <div className="flex items-start justify-between gap-3">
@@ -963,9 +971,9 @@ export function StudioView(props: StudioViewProps) {
                                 {clip.title}
                               </h3>
                               <div className="text-[11.5px] font-mono tabular-nums text-[#c7ff55] mt-0.5">
-                                {formatTimeDecimal(clip.start)} – {formatTimeDecimal(clip.end)} · Durasi{' '}
+                                {formatTimeDecimal(clip.start)} – {formatTimeDecimal(clip.end)} · {t('studio.durationLabel')}{' '}
                                 {formatClock(clip.end - clip.start)}
-                                {clip.aiScored ? ` · Skor ${Math.round(clip.score)}/100` : ''}
+                                {clip.aiScored ? ` · ${t('studio.scoreLabel', { score: Math.round(clip.score) })}` : ''}
                               </div>
                             </div>
                           </div>
@@ -978,33 +986,33 @@ export function StudioView(props: StudioViewProps) {
                             <button
                               type="button"
                               onClick={() => onNudgeClip(clip.id, 'start', -0.5)}
-                              title="Geser awal -0.5 dtk"
-                              className="px-1.5 py-0.5 rounded bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-[10.5px] font-mono text-[#cbd2de] cursor-pointer"
+                              title="-0.5s"
+                              className="px-1.5 py-0.5 rounded bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-[10.5px] font-mono text-[#dce6f7] cursor-pointer"
                             >
                               -0.5s
                             </button>
                             <button
                               type="button"
                               onClick={() => onNudgeClip(clip.id, 'start', 0.5)}
-                              title="Geser awal +0.5 dtk"
-                              className="px-1.5 py-0.5 rounded bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-[10.5px] font-mono text-[#cbd2de] cursor-pointer"
+                              title="+0.5s"
+                              className="px-1.5 py-0.5 rounded bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-[10.5px] font-mono text-[#dce6f7] cursor-pointer"
                             >
                               +0.5s
                             </button>
-                            <span className="text-[#475063] text-xs px-0.5">|</span>
+                            <span className="text-[#3e578f] text-xs px-0.5">|</span>
                             <button
                               type="button"
                               onClick={() => onNudgeClip(clip.id, 'end', -0.5)}
-                              title="Geser akhir -0.5 dtk"
-                              className="px-1.5 py-0.5 rounded bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-[10.5px] font-mono text-[#cbd2de] cursor-pointer"
+                              title="-0.5s"
+                              className="px-1.5 py-0.5 rounded bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-[10.5px] font-mono text-[#dce6f7] cursor-pointer"
                             >
                               -0.5s
                             </button>
                             <button
                               type="button"
                               onClick={() => onNudgeClip(clip.id, 'end', 0.5)}
-                              title="Geser akhir +0.5 dtk"
-                              className="px-1.5 py-0.5 rounded bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-[10.5px] font-mono text-[#cbd2de] cursor-pointer"
+                              title="+0.5s"
+                              className="px-1.5 py-0.5 rounded bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-[10.5px] font-mono text-[#dce6f7] cursor-pointer"
                             >
                               +0.5s
                             </button>
@@ -1012,16 +1020,16 @@ export function StudioView(props: StudioViewProps) {
                         </div>
 
                         {clip.hook && (
-                          <p className="text-[11px] text-[#cbd2de]">
-                            <strong className="text-[#ff5436]">Hook pembuka:</strong> “{clip.hook}”
+                          <p className="text-[11px] text-[#dce6f7]">
+                            <strong className="text-[#ff6b00]">{t('studio.hookLabel')}</strong> “{clip.hook}”
                           </p>
                         )}
-                        <p className="text-[11.5px] text-[#aeb6c4]">
-                          <strong className="text-[#cbd2de]">Dasar pemotongan:</strong>{' '}
+                        <p className="text-[11.5px] text-[#b8c7e3]">
+                          <strong className="text-[#dce6f7]">{t('studio.reasonLabel')}</strong>{' '}
                           {clip.reasons.join(' ')}
                         </p>
                         {clip.quote && (
-                          <p className="text-[11px] text-[#818b9b] italic">“{clip.quote}”</p>
+                          <p className="text-[11px] text-[#93a7cc] italic">“{clip.quote}”</p>
                         )}
                       </article>
                     );
@@ -1034,27 +1042,27 @@ export function StudioView(props: StudioViewProps) {
 
         {/* TAB 2: FONT & STYLE */}
         {activeTab === 'style' && (
-          <div className="bg-[#11141c] border border-[#1e2432] rounded-xl p-5 space-y-5">
+          <div className="bg-[#101d3d] border border-[#1e3159] rounded-xl p-5 space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="text-sm font-bold text-white">Font &amp; Gaya Subtitle Video</h2>
-                <p className="text-xs text-[#8f98a8] mt-0.5">
-                  Perubahan langsung terlihat pada pratinjau 9:16 dan otomatis tersimpan untuk sesi berikutnya.
+                <h2 className="text-sm font-bold text-white">{t('studio.styleTitle')}</h2>
+                <p className="text-xs text-[#93a7cc] mt-0.5">
+                  {t('studio.styleDesc')}
                 </p>
               </div>
-              <label className="inline-flex items-center gap-2 text-xs font-semibold text-[#e4e8f0] cursor-pointer select-none">
+              <label className="inline-flex items-center gap-2 text-xs font-semibold text-[#e4ecfa] cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={captionSettings.showCaptions}
                   onChange={(e) => onChangeCaptionSettings({ showCaptions: e.target.checked })}
                 />
-                <span>Tampilkan di video</span>
+                <span>{t('studio.showCaptions')}</span>
               </label>
             </div>
 
             {(!captionSettings.showCaptions || subtitleMode === 'none') && (
-              <div className="bg-[#0d1017] border border-[#2d3548] rounded-lg p-3 text-xs text-[#cbd2de]">
-                Subtitle sedang disembunyikan — klip akan diekspor bersih tanpa teks.
+              <div className="bg-[#0c1733] border border-[#2a4173] rounded-lg p-3 text-xs text-[#dce6f7]">
+                {t('studio.captionsHiddenNotice')}
               </div>
             )}
 
@@ -1067,11 +1075,11 @@ export function StudioView(props: StudioViewProps) {
 
         {/* TAB 3: FRAMING & EXPORT */}
         {activeTab === 'export' && (
-          <div className="bg-[#11141c] border border-[#1e2432] rounded-xl p-5 space-y-4">
+          <div className="bg-[#101d3d] border border-[#1e3159] rounded-xl p-5 space-y-4">
             <div>
-              <h2 className="text-sm font-bold text-white">Pembingkaian 9:16 &amp; Ekspor Lokal</h2>
-              <p className="text-xs text-[#8f98a8] mt-0.5">
-                Pilih cara crop vertikal lalu ekspor {selectedCount} klip terpilih menjadi file video siap unggah.
+              <h2 className="text-sm font-bold text-white">{t('studio.framingTitle')}</h2>
+              <p className="text-xs text-[#93a7cc] mt-0.5">
+                {t('studio.framingDesc', { count: selectedCount })}
               </p>
             </div>
 
@@ -1079,8 +1087,8 @@ export function StudioView(props: StudioViewProps) {
               <label
                 className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
                   framingMode === 'fit'
-                    ? 'border-[#ff5436]/60 bg-[#ff5436]/5'
-                    : 'border-[#1e2432] bg-[#0d1017]'
+                    ? 'border-[#ff6b00]/60 bg-[#ff6b00]/5'
+                    : 'border-[#1e3159] bg-[#0c1733]'
                 }`}
               >
                 <input
@@ -1091,9 +1099,9 @@ export function StudioView(props: StudioViewProps) {
                   className="mt-1"
                 />
                 <div>
-                  <div className="text-xs font-bold text-white">Jaga semua gambar tetap terlihat</div>
-                  <div className="text-[11.5px] text-[#8f98a8] mt-0.5">
-                    Video utuh di tengah dengan latar belakang buram halus. Aman untuk dialog &amp; presentasi.
+                  <div className="text-xs font-bold text-white">{t('studio.framingFit')}</div>
+                  <div className="text-[11.5px] text-[#93a7cc] mt-0.5">
+                    {t('studio.framingFitDesc')}
                   </div>
                 </div>
               </label>
@@ -1101,8 +1109,8 @@ export function StudioView(props: StudioViewProps) {
               <label
                 className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
                   framingMode === 'motion'
-                    ? 'border-[#ff5436]/60 bg-[#ff5436]/5'
-                    : 'border-[#1e2432] bg-[#0d1017]'
+                    ? 'border-[#ff6b00]/60 bg-[#ff6b00]/5'
+                    : 'border-[#1e3159] bg-[#0c1733]'
                 }`}
               >
                 <input
@@ -1114,10 +1122,10 @@ export function StudioView(props: StudioViewProps) {
                 />
                 <div>
                   <div className="text-xs font-bold text-white">
-                    Smart Crop 9:16 · Lacak Gerakan Otomatis
+                    {t('studio.framingMotion')}
                   </div>
-                  <div className="text-[11.5px] text-[#8f98a8] mt-0.5">
-                    Memotong penuh ke 9:16 dan mengikuti pusat gerakan pembicara secara lokal (tanpa unduhan berat).
+                  <div className="text-[11.5px] text-[#93a7cc] mt-0.5">
+                    {t('studio.framingMotionDesc')}
                   </div>
                 </div>
               </label>
@@ -1125,8 +1133,8 @@ export function StudioView(props: StudioViewProps) {
               <label
                 className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
                   framingMode === 'manual'
-                    ? 'border-[#ff5436]/60 bg-[#ff5436]/5'
-                    : 'border-[#1e2432] bg-[#0d1017]'
+                    ? 'border-[#ff6b00]/60 bg-[#ff6b00]/5'
+                    : 'border-[#1e3159] bg-[#0c1733]'
                 }`}
               >
                 <input
@@ -1137,9 +1145,9 @@ export function StudioView(props: StudioViewProps) {
                   className="mt-1"
                 />
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-bold text-white">Crop Manual 9:16 (Geser Posisi)</div>
-                  <div className="text-[11.5px] text-[#8f98a8] mt-0.5">
-                    Atur posisi horizontal jendela potong secara presisi.
+                  <div className="text-xs font-bold text-white">{t('studio.framingManual')}</div>
+                  <div className="text-[11.5px] text-[#93a7cc] mt-0.5">
+                    {t('studio.framingManualDesc')}
                   </div>
                   {framingMode === 'manual' && (
                     <div className="mt-2.5 flex items-center gap-3">
@@ -1157,8 +1165,8 @@ export function StudioView(props: StudioViewProps) {
                       <button
                         type="button"
                         onClick={() => onChangeManualPanX(0.5)}
-                        className="p-1 rounded bg-[#181c27] border border-[#2d3548] text-[#cbd2de] cursor-pointer"
-                        title="Tengah (50%)"
+                        className="p-1 rounded bg-[#16264d] border border-[#2a4173] text-[#dce6f7] cursor-pointer"
+                        title="50%"
                       >
                         <RotateCcw className="w-3 h-3" />
                       </button>
@@ -1170,19 +1178,21 @@ export function StudioView(props: StudioViewProps) {
 
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="text-xs text-[#b7c0cf] font-medium">Format file ekspor</label>
-                <span className="text-[11px] font-mono text-[#8f98a8]">
-                  Codec aktif: {resolvedMime ? resolvedMime.split(';')[0] : 'Tidak didukung'}
+                <label className="text-xs text-[#b8c7e3] font-medium">{t('studio.exportFormatLabel')}</label>
+                <span className="text-[11px] font-mono text-[#93a7cc]">
+                  {t('studio.activeCodec', {
+                    codec: resolvedMime ? resolvedMime.split(';')[0] : t('studio.unsupported'),
+                  })}
                 </span>
               </div>
               <select
                 value={exportFormat}
                 disabled={exporting}
                 onChange={(e) => onChangeExportFormat(e.target.value as ExportFormat)}
-                className="w-full bg-[#0d1017] text-[#f3f5f8] border border-[#2d3548] rounded-lg px-3 py-2 text-xs"
+                className="w-full bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-3 py-2 text-xs"
               >
-                <option value="webm">WebM · paling stabil (disarankan)</option>
-                <option value="mp4">MP4 · H.264 (jika didukung penuh browser)</option>
+                <option value="webm">{t('studio.formatWebm')}</option>
+                <option value="mp4">{t('studio.formatMp4')}</option>
               </select>
             </div>
 
@@ -1191,19 +1201,19 @@ export function StudioView(props: StudioViewProps) {
                 type="button"
                 disabled={!videoReady || selectedCount === 0 || exporting || !resolvedMime}
                 onClick={onStartExport}
-                className="flex-1 py-2.5 px-4 rounded-lg bg-[#ff5436] hover:bg-[#ff6b52] disabled:opacity-40 text-white text-xs font-bold inline-flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                className="flex-1 py-2.5 px-4 rounded-lg bg-[#ff6b00] hover:bg-[#ff8224] disabled:opacity-40 text-white text-xs font-bold inline-flex items-center justify-center gap-2 cursor-pointer transition-colors"
               >
                 <Play className="w-3.5 h-3.5 fill-current" />
-                {exporting ? 'Sedang Mengekspor…' : `Ekspor ${selectedCount} Klip Terpilih`}
+                {exporting ? t('studio.exporting') : t('studio.exportBtn', { count: selectedCount })}
               </button>
               {exporting && (
                 <button
                   type="button"
                   onClick={onStopExport}
-                  className="py-2.5 px-4 rounded-lg bg-[#181c27] hover:bg-red-950/50 border border-[#2d3548] text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                  className="py-2.5 px-4 rounded-lg bg-[#16264d] hover:bg-red-950/50 border border-[#2a4173] text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
                 >
                   <Square className="w-3.5 h-3.5 fill-current" />
-                  Hentikan
+                  {t('studio.stop')}
                 </button>
               )}
             </div>
@@ -1211,27 +1221,27 @@ export function StudioView(props: StudioViewProps) {
             {(exporting || exportProgressPct > 0) && (
               <div className="space-y-1.5 pt-1">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-[#cbd2de]">{exportProgressLabel}</span>
+                  <span className="text-[#dce6f7]">{exportProgressLabel}</span>
                   <span className="font-mono tabular-nums font-bold text-[#c7ff55]">
                     {Math.round(exportProgressPct)}%
                   </span>
                 </div>
-                <div className="h-1.5 bg-[#1b202c] rounded-full overflow-hidden">
+                <div className="h-1.5 bg-[#1a2d59] rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-[#ff5436] transition-all duration-150"
+                    className="h-full bg-[#ff6b00] transition-all duration-150"
                     style={{ width: `${Math.max(0, Math.min(100, exportProgressPct))}%` }}
                   />
                 </div>
               </div>
             )}
 
-            <div className="text-xs text-[#b9c2d0] min-h-[18px]">{statusMessage}</div>
+            <div className="text-xs text-[#b8c7e3] min-h-[18px]">{statusMessage}</div>
 
             {latestDownloads.length > 0 && (
-              <div className="space-y-2.5 pt-2 border-t border-[#1e2432]">
+              <div className="space-y-2.5 pt-2 border-t border-[#1e3159]">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-xs font-semibold text-[#cbd2de]">
-                    {latestDownloads.length} klip siap diunduh
+                  <span className="text-xs font-semibold text-[#dce6f7]">
+                    {t('studio.readyDownloadCount', { count: latestDownloads.length })}
                   </span>
                   {latestExportRecords.length > 0 && (
                     <button
@@ -1243,18 +1253,18 @@ export function StudioView(props: StudioViewProps) {
                         try {
                           await downloadProjectZip(
                             latestExportRecords,
-                            activeLabel || latestExportRecords[0]?.projectName || 'Auto Clipper'
+                            activeLabel || latestExportRecords[0]?.projectName || 'Paijo Clip'
                           );
                         } finally {
                           setZipExporting(false);
                         }
                       }}
-                      className="px-3.5 py-2 rounded-lg bg-[#ff5436] hover:bg-[#ff6b52] disabled:opacity-50 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                      className="px-3.5 py-2 rounded-lg bg-[#ff6b00] hover:bg-[#ff8224] disabled:opacity-50 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-colors"
                     >
                       <Archive className="w-3.5 h-3.5" />
                       {zipExporting
-                        ? 'Mengemas ZIP…'
-                        : `Unduh Semua Sekaligus (.zip · ${latestExportRecords.length} klip)`}
+                        ? t('studio.packingZip')
+                        : t('studio.downloadAllZipCount', { count: latestExportRecords.length })}
                     </button>
                   )}
                 </div>
@@ -1267,7 +1277,7 @@ export function StudioView(props: StudioViewProps) {
                       className="px-3.5 py-2 rounded-lg bg-[#c7ff55] hover:bg-[#d6ff7d] text-[#111507] text-xs font-bold inline-flex items-center gap-1.5 transition-colors"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      Unduh {dl.rangeText} ({dl.ext.toUpperCase()})
+                      {t('studio.downloadClipRange', { range: dl.rangeText, ext: dl.ext.toUpperCase() })}
                     </a>
                   ))}
                 </div>

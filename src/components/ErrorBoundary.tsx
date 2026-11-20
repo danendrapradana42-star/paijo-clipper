@@ -21,16 +21,16 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-[#08090c] text-[#f3f5f8] flex items-center justify-center p-6">
-          <div className="max-w-md w-full bg-[#11141c] border border-[#2d3548] rounded-xl p-6 space-y-4">
+        <div className="min-h-screen bg-[#070e20] text-[#f1f5fc] flex items-center justify-center p-6">
+          <div className="max-w-md w-full bg-[#101d3d] border border-[#2a4173] rounded-xl p-6 space-y-4">
             <h1 className="text-lg font-bold text-white">Studio mengalami gangguan tak terduga</h1>
-            <p className="text-sm text-[#8f98a8] break-words">{this.state.message}</p>
+            <p className="text-sm text-[#93a7cc] break-words">{this.state.message}</p>
             <button
               type="button"
               onClick={() => {
                 this.setState({ hasError: false, message: '' });
               }}
-              className="px-4 py-2 rounded-lg bg-[#ff5436] hover:bg-[#ff6b52] text-white text-sm font-semibold transition-colors cursor-pointer"
+              className="px-4 py-2 rounded-lg bg-[#ff6b00] hover:bg-[#ff8224] text-white text-sm font-semibold transition-colors cursor-pointer"
             >
               Pulihkan Studio
             </button>

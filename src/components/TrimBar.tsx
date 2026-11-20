@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from '../i18n/LanguageContext';
 import type { AudioEnvelopeData, SubtitleCue } from '../types/clipper';
 import { snapBoundaryToCueOrGap } from '../utils/clipSelector';
 import { formatTimeDecimal } from '../utils/subtitles';
@@ -22,6 +23,7 @@ export function TrimBar({
   disabled = false,
   onCommit,
 }: TrimBarProps) {
+  const { t } = useTranslation();
   const trackRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState<'start' | 'end' | null>(null);
   const [local, setLocal] = useState({ start, end });
@@ -35,7 +37,7 @@ export function TrimBar({
   const windowEnd = Math.min(hardMax, Math.max(end + 6, windowStart + 10));
   const span = Math.max(0.5, windowEnd - windowStart);
 
-  const toFraction = (t: number) => Math.max(0, Math.min(1, (t - windowStart) / span));
+  const toFraction = (tVal: number) => Math.max(0, Math.min(1, (tVal - windowStart) / span));
   const toTime = useCallback(
     (fraction: number) => Math.max(windowStart, Math.min(windowEnd, windowStart + fraction * span)),
     [windowStart, windowEnd, span]
@@ -79,11 +81,11 @@ export function TrimBar({
       const rect = trackRef.current?.getBoundingClientRect();
       if (!rect || rect.width <= 0) return;
       const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-      const t = toTime(frac);
+      const tVal = toTime(frac);
       setLocal((cur) =>
         dragging === 'start'
-          ? { ...cur, start: Math.max(0, Math.min(cur.end - 2, t)) }
-          : { ...cur, end: Math.min(hardMax, Math.max(cur.start + 2, t)) }
+          ? { ...cur, start: Math.max(0, Math.min(cur.end - 2, tVal)) }
+          : { ...cur, end: Math.min(hardMax, Math.max(cur.start + 2, tVal)) }
       );
     };
 
@@ -118,12 +120,12 @@ export function TrimBar({
   const duration = Math.max(0, local.end - local.start);
 
   return (
-    <div className="bg-[#0d1017] border border-[#1e2432] rounded-lg p-3 space-y-2 select-none">
+    <div className="bg-[#0c1733] border border-[#1e3159] rounded-lg p-3 space-y-2 select-none">
       <div className="flex items-center justify-between gap-2 text-[11px]">
-        <span className="font-semibold text-[#cbd2de]">
-          Geser Batas Klip (Auto-Snap ke Jeda/Kalimat)
+        <span className="font-semibold text-[#dce6f7]">
+          {t('trim.title')}
         </span>
-        <span className="font-mono tabular-nums text-[#8f98a8]">
+        <span className="font-mono tabular-nums text-[#93a7cc]">
           {formatTimeDecimal(local.start)} → {formatTimeDecimal(local.end)}{' '}
           <strong className="text-[#c7ff55] ml-1.5">{duration.toFixed(1)}s</strong>
         </span>
@@ -131,7 +133,7 @@ export function TrimBar({
 
       <div
         ref={trackRef}
-        className={`relative h-11 bg-[#07090d] border border-[#1e2432] rounded-md overflow-hidden ${
+        className={`relative h-11 bg-[#070e20] border border-[#1e3159] rounded-md overflow-hidden ${
           disabled ? 'opacity-50 pointer-events-none' : ''
         }`}
       >
@@ -139,20 +141,20 @@ export function TrimBar({
           {bars.map((val, idx) => (
             <div
               key={idx}
-              className="flex-1 bg-[#283146] rounded-t-[1px]"
+              className="flex-1 bg-[#2a4173] rounded-t-[1px]"
               style={{ height: `${Math.round(val * 86)}%` }}
             />
           ))}
         </div>
 
         <div
-          className="absolute inset-y-0 bg-[#ff5436]/20 border-x border-[#ff5436]"
+          className="absolute inset-y-0 bg-[#ff6b00]/20 border-x border-[#ff6b00]"
           style={{ left: `${leftPct}%`, right: `${rightPct}%` }}
         />
 
         <button
           type="button"
-          aria-label="Geser awal klip"
+          aria-label={t('trim.ariaStart')}
           onPointerDown={(e) => {
             e.preventDefault();
             setDragging('start');
@@ -160,13 +162,13 @@ export function TrimBar({
           style={{ left: `${leftPct}%` }}
           className="absolute inset-y-0 w-3.5 -translate-x-1/2 cursor-ew-resize group z-10"
         >
-          <span className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-0.5 bg-[#ff5436]" />
-          <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-5 rounded-sm bg-[#ff5436] group-hover:bg-[#ff765d]" />
+          <span className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-0.5 bg-[#ff6b00]" />
+          <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-5 rounded-sm bg-[#ff6b00] group-hover:bg-[#ff8224]" />
         </button>
 
         <button
           type="button"
-          aria-label="Geser akhir klip"
+          aria-label={t('trim.ariaEnd')}
           onPointerDown={(e) => {
             e.preventDefault();
             setDragging('end');

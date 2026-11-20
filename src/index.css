@@ -7,8 +7,8 @@
 
   body {
     font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-    background-color: #08090c;
-    color: #f3f5f8;
+    background-color: #070e20;
+    color: #f1f5fc;
   }
 
   .font-mono,
@@ -17,12 +17,12 @@
   }
 
   input[type="range"] {
-    accent-color: #ff5436;
+    accent-color: #ff6b00;
   }
 
   input[type="checkbox"],
   input[type="radio"] {
-    accent-color: #ff5436;
+    accent-color: #ff6b00;
   }
 }
 
@@ -37,12 +37,12 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #232a3b;
+  background: #243966;
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #364059;
+  background: #34508c;
 }
 
 @media (prefers-reduced-motion: reduce) {
