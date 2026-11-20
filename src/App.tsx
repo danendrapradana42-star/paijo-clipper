@@ -1,12 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import {
-  Cloud,
   Download,
   Film,
   LayoutGrid,
-  LogIn,
-  LogOut,
   Menu,
   RefreshCw,
   Sliders,
@@ -37,29 +34,18 @@ import type {
 } from './types/clipper';
 import {
   decodeVideoAudioEnvelope,
-  extractWavBase64ForTranscription,
+  extractWavChunksForTranscription,
   findGap,
 } from './utils/audioAnalyzer';
 import { analyzeCues, buildAudioEnvelopeClips } from './utils/clipSelector';
 import {
   FIREBASE_PROJECT_ID,
+  FIRESTORE_DATABASE_ID,
   auth,
   signInWithGoogle,
   signOutFirebase,
   testFirestoreConnection,
 } from './utils/firebase';
-import {
-  deleteAiScriptFromFirestore,
-  deleteClipProjectFromFirestore,
-  saveAiScriptToFirestore,
-  saveClipProjectToFirestore,
-  saveStudioPreferences,
-  subscribeAiScripts,
-  subscribeClipProjects,
-  subscribeStudioPreferences,
-  type SavedAiScript,
-  type SavedClipProject,
-} from './utils/firestoreSync';
 import {
   cleanCues,
   cuesToPreviewText,
@@ -216,7 +202,7 @@ export default function App() {
   const [batchBannerText, setBatchBannerText] = useState('');
   const [batchGlobalPct, setBatchGlobalPct] = useState(0);
 
-  // Firebase Auth & Firestore Cloud Sync State
+  // Firebase Auth & Firestore Connection Status (dedicated to App Updates)
   const [fbUser, setFbUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [authError, setAuthError] = useState('');
@@ -225,12 +211,6 @@ export default function App() {
     offline: boolean;
     message: string;
   }>({ reachable: false, offline: false, message: 'Memeriksa koneksi Firestore…' });
-  const [savedCloudProjects, setSavedCloudProjects] = useState<SavedClipProject[]>([]);
-  const [savedAiScripts, setSavedAiScripts] = useState<SavedAiScript[]>([]);
-  const [savingCloudProject, setSavingCloudProject] = useState(false);
-  const [cloudProjectNotice, setCloudProjectNotice] = useState('');
-  const prefsLoadedFromCloudRef = useRef(false);
-  const skipNextPrefSyncRef = useRef(false);
 
   // Test Firestore connection on startup & listen to Firebase Auth state
   useEffect(() => {
@@ -238,11 +218,7 @@ export default function App() {
     const unsubAuth = onAuthStateChanged(auth, (user) => {
       setFbUser(user);
       setAuthReady(true);
-      if (!user) {
-        prefsLoadedFromCloudRef.current = false;
-        setSavedCloudProjects([]);
-        setSavedAiScripts([]);
-      } else if (!user.emailVerified) {
+      if (user && !user.emailVerified) {
         setAuthError('Email akun Google belum terverifikasi untuk akses Firestore.');
       } else {
         setAuthError('');
@@ -251,33 +227,7 @@ export default function App() {
     return () => unsubAuth();
   }, []);
 
-  // Subscribe to Firestore preferences, clip projects, and AI scripts when signed in
-  useEffect(() => {
-    if (!authReady || !fbUser || !fbUser.emailVerified) return;
-
-    const unsubPrefs = subscribeStudioPreferences(fbUser.uid, (prefs) => {
-      if (prefs) {
-        skipNextPrefSyncRef.current = true;
-        setCaptionSettings((prev) => ({ ...prev, ...prefs.captionSettings }));
-        setClipLengthRange(prefs.clipLengthRange);
-        setClipLimit(prefs.clipLimit);
-        setFramingMode(prefs.framingMode);
-        setExportFormat(prefs.exportFormat);
-      }
-      prefsLoadedFromCloudRef.current = true;
-    });
-
-    const unsubProjects = subscribeClipProjects(fbUser.uid, setSavedCloudProjects);
-    const unsubScripts = subscribeAiScripts(fbUser.uid, setSavedAiScripts);
-
-    return () => {
-      unsubPrefs();
-      unsubProjects();
-      unsubScripts();
-    };
-  }, [authReady, fbUser]);
-
-  // Persist Studio Preferences (LocalStorage + Debounced Firestore)
+  // Persist Studio Preferences locally
   useEffect(() => {
     try {
       localStorage.setItem(
@@ -291,27 +241,7 @@ export default function App() {
         })
       );
     } catch {}
-
-    if (!authReady || !fbUser || !fbUser.emailVerified || !prefsLoadedFromCloudRef.current) {
-      return;
-    }
-    if (skipNextPrefSyncRef.current) {
-      skipNextPrefSyncRef.current = false;
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      saveStudioPreferences(fbUser.uid, {
-        captionSettings,
-        clipLengthRange,
-        clipLimit,
-        framingMode,
-        exportFormat,
-      }).catch(() => {});
-    }, 900);
-
-    return () => window.clearTimeout(timer);
-  }, [authReady, fbUser, captionSettings, clipLengthRange, clipLimit, framingMode, exportFormat]);
+  }, [captionSettings, clipLengthRange, clipLimit, framingMode, exportFormat]);
 
   const handleSignInGoogle = async () => {
     setAuthError('');
@@ -333,81 +263,8 @@ export default function App() {
     setAuthError('');
     try {
       await signOutFirebase();
-      setCloudProjectNotice('');
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : 'Gagal keluar dari akun.');
-    }
-  };
-
-  const handleSaveProjectCloud = async () => {
-    if (!fbUser || !fbUser.emailVerified || !clips.length || savingCloudProject) return;
-    setSavingCloudProject(true);
-    setCloudProjectNotice('');
-    try {
-      const projName = activeLabel || activeFile?.name || 'Projek Auto Clipper';
-      const exportedForProject = exportedRecords.filter((r) => r.projectId === activeProjectId).length;
-      await saveClipProjectToFirestore(fbUser.uid, {
-        projectKey: activeProjectId,
-        projectName: projName,
-        sourceLabel: activeFile?.name || activeLabel || 'Video Lokal',
-        durationSec: videoDuration || 0,
-        exportedCount: exportedForProject,
-        clips,
-      });
-      setCloudProjectNotice(`Projek "${projName}" (${clips.length} klip) tersimpan di Firestore.`);
-    } catch (err) {
-      setCloudProjectNotice(err instanceof Error ? err.message : 'Gagal menyimpan projek ke Firestore.');
-    } finally {
-      setSavingCloudProject(false);
-    }
-  };
-
-  const handleLoadCloudProject = (proj: SavedClipProject) => {
-    if (!proj.clips.length) return;
-    const maxDur = videoReady && videoDuration > 0 ? videoDuration : Infinity;
-    const mapped: ClipCandidate[] = proj.clips
-      .map((c, idx) => {
-        const start = Math.max(0, Math.min(maxDur - 2, c.start));
-        const end = Math.min(maxDur, Math.max(start + 2, c.end));
-        return {
-          id: c.id || `cloud-clip-${idx + 1}`,
-          start: Math.round(start * 100) / 100,
-          end: Math.round(end * 100) / 100,
-          title: c.title || `Klip ${idx + 1}`,
-          hook: '',
-          reasons: ['Dimuat dari projek tersimpan Firestore'],
-          quote: '',
-          score: c.score || 75,
-          aiScored: false,
-          selected: c.selected,
-        };
-      })
-      .filter((c) => c.end - c.start >= 2);
-
-    if (!mapped.length) return;
-    setClips(mapped);
-    setActiveProjectId(proj.projectKey || proj.id);
-    if (!activeFile) {
-      setActiveLabel(proj.projectName);
-    }
-    if (videoRef.current && videoReady) {
-      videoRef.current.pause();
-      videoRef.current.currentTime = mapped[0].start;
-    }
-    setCloudProjectNotice(
-      videoReady
-        ? `Daftar ${mapped.length} klip dari "${proj.projectName}" diterapkan ke video aktif.`
-        : `Daftar ${mapped.length} klip dari "${proj.projectName}" dimuat. Pilih video sumber di Beranda untuk memutar.`
-    );
-  };
-
-  const handleDeleteCloudProject = async (projectId: string) => {
-    if (!fbUser || !fbUser.emailVerified) return;
-    try {
-      await deleteClipProjectFromFirestore(fbUser.uid, projectId);
-      setCloudProjectNotice('Projek dihapus dari Firestore.');
-    } catch (err) {
-      setCloudProjectNotice(err instanceof Error ? err.message : 'Gagal menghapus projek.');
     }
   };
 
@@ -682,46 +539,67 @@ export default function App() {
     }, 1000);
 
     try {
-      const { base64, mimeType, durationSec } = await extractWavBase64ForTranscription(
-        activeFile,
-        ctrl.signal
-      );
+      const { chunks } = await extractWavChunksForTranscription(activeFile, ctrl.signal, 60);
       if (ctrl.signal.aborted) {
         throw new DOMException('Pembuatan subtitle dibatalkan.', 'AbortError');
       }
 
       phase = 'upload';
-      setTranscribeProgressPct((prev) => Math.max(prev, 38));
-      setTranscribeStageLabel('Mentranskrip ucapan (Gemini AI)…');
-      setStatusMessage('Mengirim audio ke server untuk transkripsi AI (Gemini Transcribe)…');
-
-      const res = await fetch('/api/transcribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          audioBase64: base64,
-          mimeType,
-          language: aiTranscribeLang,
-          durationSec,
-          consentConfirmed: true,
-        }),
-        signal: ctrl.signal,
-      });
-
-      const rawText = await res.text();
-      let data: { cues?: SubtitleCue[]; error?: string } = {};
-      try {
-        data = JSON.parse(rawText);
-      } catch {
-        throw new Error(
-          res.ok
-            ? 'Respons server tidak valid saat membaca hasil subtitle.'
-            : `Server mengembalikan error (${res.status}). Silakan coba buat ulang.`
+      const combinedCues: SubtitleCue[] = [];
+      for (let i = 0; i < chunks.length; i++) {
+        if (ctrl.signal.aborted) {
+          throw new DOMException('Pembuatan subtitle dibatalkan.', 'AbortError');
+        }
+        const chunk = chunks[i];
+        const partProgress = 36 + Math.round((i / Math.max(1, chunks.length)) * 56);
+        setTranscribeProgressPct((prev) => Math.max(prev, partProgress));
+        setTranscribeStageLabel(
+          chunks.length > 1
+            ? `Mentranskrip bagian ${i + 1}/${chunks.length} (Gemini AI)…`
+            : 'Mentranskrip ucapan (Gemini AI)…'
         );
-      }
-      if (!res.ok) throw new Error(data.error || 'Transkripsi AI gagal.');
+        setStatusMessage(
+          chunks.length > 1
+            ? `Mengirim bagian audio ${i + 1} dari ${chunks.length} ke Gemini Transcribe…`
+            : 'Mengirim audio ke server untuk transkripsi AI (Gemini Transcribe)…'
+        );
 
-      const cleaned = retimeCues(cleanCues(data.cues || []), audioEnv);
+        const res = await fetch('/api/transcribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            audioBase64: chunk.base64,
+            mimeType: chunk.mimeType,
+            language: aiTranscribeLang,
+            durationSec: chunk.durationSec,
+            consentConfirmed: true,
+          }),
+          signal: ctrl.signal,
+        });
+
+        const rawText = await res.text();
+        let data: { cues?: SubtitleCue[]; error?: string } = {};
+        try {
+          data = JSON.parse(rawText);
+        } catch {
+          throw new Error(
+            res.ok
+              ? 'Respons server tidak valid saat membaca hasil subtitle.'
+              : `Server mengembalikan error (${res.status}). Silakan coba buat ulang.`
+          );
+        }
+        if (!res.ok) throw new Error(data.error || 'Transkripsi AI gagal.');
+
+        for (const cue of data.cues || []) {
+          combinedCues.push({
+            start: Math.max(0, Number(cue.start) || 0) + chunk.offsetSec,
+            end: Math.max(0.2, Number(cue.end) || 0) + chunk.offsetSec,
+            text: String(cue.text || '').trim(),
+          });
+        }
+      }
+
+      const cleaned = retimeCues(cleanCues(combinedCues), audioEnv);
       if (!cleaned.length) {
         throw new Error('Tidak ada ucapan yang terdeteksi dari audio. Coba ulangi atau unggah .srt/.vtt.');
       }
@@ -1364,79 +1242,18 @@ export default function App() {
             </button>
           </nav>
 
-          {/* Firestore Cloud Sync & Session Summary Footer */}
-          <div className="space-y-2.5">
-            <div className="bg-[#11141c] border border-[#1e2432] rounded-xl p-3 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#e8edf5]">
-                  <Cloud
-                    className={`w-3.5 h-3.5 ${
-                      firestoreStatus.offline
-                        ? 'text-red-400'
-                        : firestoreStatus.reachable
-                          ? 'text-[#c7ff55]'
-                          : 'text-[#8f98a8]'
-                    }`}
-                  />
-                  Firestore Cloud
-                </span>
-                <span className="text-[10.5px] font-mono text-[#8f98a8]">
-                  {firestoreStatus.offline
-                    ? 'Offline'
-                    : fbUser?.emailVerified
-                      ? 'Sinkron'
-                      : firestoreStatus.reachable
-                        ? 'Siap'
-                        : '…'}
-                </span>
-              </div>
-
-              {fbUser ? (
-                <div className="flex items-center justify-between gap-2 pt-0.5">
-                  <div className="min-w-0">
-                    <div className="text-[11.5px] font-bold text-white truncate">
-                      {fbUser.displayName || fbUser.email}
-                    </div>
-                    <div className="text-[10px] text-[#8f98a8] truncate">{fbUser.email}</div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleSignOutGoogle}
-                    title="Keluar akun Google"
-                    className="p-1.5 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-[#cbd2de] hover:text-white shrink-0 cursor-pointer"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  disabled={!authReady}
-                  onClick={handleSignInGoogle}
-                  className="w-full py-1.5 px-2.5 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-[11.5px] font-semibold text-white inline-flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer"
-                >
-                  <LogIn className="w-3.5 h-3.5 text-[#c7ff55]" />
-                  Masuk Google (Firestore)
-                </button>
-              )}
-
-              {authError && (
-                <div className="text-[10.5px] text-amber-300 leading-snug">{authError}</div>
-              )}
+          {/* Session Summary Footer */}
+          <div className="bg-[#11141c] border border-[#1e2432] rounded-xl p-3 space-y-2">
+            <div className="text-[11px] text-[#8f98a8] font-medium">Ringkasan Sesi</div>
+            <div className="flex items-center justify-between text-xs font-bold text-white">
+              <span className="inline-flex items-center gap-1.5">
+                <Film className="w-3.5 h-3.5 text-[#ff5436]" />
+                9:16 · 30fps
+              </span>
+              <span className="font-mono tabular-nums text-[#c7ff55]">{clips.length} klip</span>
             </div>
-
-            <div className="bg-[#11141c] border border-[#1e2432] rounded-xl p-3 space-y-2">
-              <div className="text-[11px] text-[#8f98a8] font-medium">Ringkasan Sesi</div>
-              <div className="flex items-center justify-between text-xs font-bold text-white">
-                <span className="inline-flex items-center gap-1.5">
-                  <Film className="w-3.5 h-3.5 text-[#ff5436]" />
-                  9:16 · 30fps
-                </span>
-                <span className="font-mono tabular-nums text-[#c7ff55]">{clips.length} klip</span>
-              </div>
-              <div className="text-[11px] text-[#8f98a8] truncate">
-                {activeFile ? activeLabel || activeFile.name : 'Menunggu video lokal'}
-              </div>
+            <div className="text-[11px] text-[#8f98a8] truncate">
+              {activeFile ? activeLabel || activeFile.name : 'Menunggu video lokal'}
             </div>
           </div>
         </aside>
@@ -1732,14 +1549,6 @@ export default function App() {
                 latestExportRecords={latestExportRecords}
                 audioEnv={audioEnv}
                 onChangeSourceHome={() => setView('home')}
-                fbSignedIn={Boolean(fbUser && fbUser.emailVerified)}
-                onSignInGoogle={handleSignInGoogle}
-                savedCloudProjects={savedCloudProjects}
-                savingCloudProject={savingCloudProject}
-                cloudProjectNotice={cloudProjectNotice}
-                onSaveProjectCloud={handleSaveProjectCloud}
-                onLoadCloudProject={handleLoadCloudProject}
-                onDeleteCloudProject={handleDeleteCloudProject}
               />
             )}
 
@@ -1755,17 +1564,6 @@ export default function App() {
                   setImportedSubName('Subtitle Video AI');
                   setSubtitleMode('external');
                   await loadVideoIntoStudio(file, { label: title, initialCues: parsed });
-                }}
-                fbSignedIn={Boolean(fbUser && fbUser.emailVerified)}
-                onSignInGoogle={handleSignInGoogle}
-                savedAiScripts={savedAiScripts}
-                onSaveScriptCloud={async (payload) => {
-                  if (!fbUser || !fbUser.emailVerified) return;
-                  return saveAiScriptToFirestore(fbUser.uid, payload);
-                }}
-                onDeleteScriptCloud={async (scriptId) => {
-                  if (!fbUser || !fbUser.emailVerified) return;
-                  await deleteAiScriptFromFirestore(fbUser.uid, scriptId);
                 }}
               />
             )}
@@ -1816,8 +1614,12 @@ export default function App() {
                 exportedCount={exportedRecords.length}
                 firestoreStatus={firestoreStatus}
                 firestoreProjectId={FIREBASE_PROJECT_ID}
-                fbSignedIn={Boolean(fbUser && fbUser.emailVerified)}
-                fbUserEmail={fbUser?.email || null}
+                firestoreDatabaseId={FIRESTORE_DATABASE_ID}
+                fbUser={fbUser}
+                authReady={authReady}
+                authError={authError}
+                onSignInGoogle={handleSignInGoogle}
+                onSignOutGoogle={handleSignOutGoogle}
                 onBackHome={() => setView('home')}
               />
             )}

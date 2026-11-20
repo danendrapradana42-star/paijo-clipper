@@ -22,256 +22,104 @@ service cloud.firestore {
       return request.auth != null && request.auth.token.email_verified == true;
     }
 
-    function isOwner(userId) {
-      return request.auth.uid == userId;
+    function isVerifiedAdminEmail() {
+      return isSignedIn() && request.auth.token.email == 'danendrapradana44@gmail.com';
     }
 
-    function isValidStudioPreference(data) {
-      return data.keys().hasAll([
-          'ownerId',
-          'showCaptions',
-          'fontFamily',
-          'style',
-          'fontSize',
-          'position',
-          'highlightColor',
-          'caps',
-          'italic',
-          'fontWeight',
-          'clipLengthRange',
-          'clipLimit',
-          'framingMode',
-          'exportFormat',
-          'createdAt',
-          'updatedAt'
-        ])
-        && data.keys().hasOnly([
-          'ownerId',
-          'showCaptions',
-          'fontFamily',
-          'style',
-          'fontSize',
-          'position',
-          'highlightColor',
-          'caps',
-          'italic',
-          'fontWeight',
-          'clipLengthRange',
-          'clipLimit',
-          'framingMode',
-          'exportFormat',
-          'createdAt',
-          'updatedAt'
-        ])
-        && data.ownerId is string && isValidId(data.ownerId) && data.ownerId == request.auth.uid
-        && data.showCaptions is bool
-        && data.fontFamily is string && data.fontFamily.size() >= 1 && data.fontFamily.size() <= 160
-        && data.style is string && data.style in [
-          'capcut',
-          'tiktok_stroke',
-          'hormozi',
-          'highlight',
-          'pop',
-          'box3d',
-          'pill_glass',
-          'retro_shadow',
-          'outline_hollow',
-          'typewriter_box',
-          'gradient',
-          'karaoke_bar',
-          'classic',
-          'clean',
-          'neon'
-        ]
-        && data.fontSize is number && data.fontSize >= 20 && data.fontSize <= 96
-        && data.position is string && data.position in ['bottom', 'lower', 'center', 'top']
-        && data.highlightColor is string && data.highlightColor.size() <= 16 && data.highlightColor.matches('^#[0-9a-fA-F]{6}$')
-        && data.caps is bool
-        && data.italic is bool
-        && data.fontWeight is string && data.fontWeight in ['700', '800', '900']
-        && data.clipLengthRange is string && data.clipLengthRange in ['30-60', '60-90', '90-150']
-        && data.clipLimit is number && data.clipLimit >= 1 && data.clipLimit <= 30
-        && data.framingMode is string && data.framingMode in ['fit', 'motion', 'manual']
-        && data.exportFormat is string && data.exportFormat in ['webm', 'mp4']
-        && data.createdAt is timestamp
-        && data.updatedAt is timestamp;
+    function isAdmin() {
+      return isVerifiedAdminEmail()
+        || (isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
     }
 
-    function isValidClipProject(data) {
+    function isValidAppRelease(data) {
       return data.keys().hasAll([
           'ownerId',
-          'projectKey',
-          'projectName',
-          'sourceLabel',
-          'durationSec',
-          'clipsCount',
-          'exportedCount',
-          'clips',
-          'createdAt',
-          'updatedAt'
-        ])
-        && data.keys().hasOnly([
-          'ownerId',
-          'projectKey',
-          'projectName',
-          'sourceLabel',
-          'durationSec',
-          'clipsCount',
-          'exportedCount',
-          'clips',
-          'createdAt',
-          'updatedAt'
-        ])
-        && data.ownerId is string && isValidId(data.ownerId) && data.ownerId == request.auth.uid
-        && data.projectKey is string && isValidId(data.projectKey)
-        && data.projectName is string && data.projectName.size() >= 1 && data.projectName.size() <= 160
-        && data.sourceLabel is string && data.sourceLabel.size() >= 1 && data.sourceLabel.size() <= 160
-        && data.durationSec is number && data.durationSec >= 0 && data.durationSec <= 86400
-        && data.clipsCount is number && data.clipsCount >= 0 && data.clipsCount <= 25
-        && data.exportedCount is number && data.exportedCount >= 0 && data.exportedCount <= 50
-        && data.clips is list && data.clips.size() <= 25 && (data.clips.size() == 0 || data.clips[0] is map)
-        && data.createdAt is timestamp
-        && data.updatedAt is timestamp;
-    }
-
-    function isValidAiScript(data) {
-      return data.keys().hasAll([
-          'ownerId',
+          'version',
+          'baseVersion',
+          'updateType',
+          'status',
           'title',
-          'prompt',
-          'durationMinutes',
-          'totalDurationSec',
-          'theme',
-          'language',
-          'voiceName',
-          'scenes',
+          'releaseNotes',
+          'changes',
+          'packageUrl',
+          'buildTarget',
           'createdAt',
           'updatedAt'
         ])
         && data.keys().hasOnly([
           'ownerId',
+          'version',
+          'baseVersion',
+          'updateType',
+          'status',
           'title',
-          'prompt',
-          'durationMinutes',
-          'totalDurationSec',
-          'theme',
-          'language',
-          'voiceName',
-          'scenes',
+          'releaseNotes',
+          'changes',
+          'packageUrl',
+          'buildTarget',
           'createdAt',
           'updatedAt'
         ])
         && data.ownerId is string && isValidId(data.ownerId) && data.ownerId == request.auth.uid
+        && data.version is string && data.version.size() >= 5 && data.version.size() <= 24 && data.version.matches('^[0-9]+\\.[0-9]+\\.[0-9]+$')
+        && data.baseVersion is string && data.baseVersion.size() >= 5 && data.baseVersion.size() <= 24 && data.baseVersion.matches('^[0-9]+\\.[0-9]+\\.[0-9]+$')
+        && data.updateType is string && data.updateType in ['minor', 'major']
+        && data.status is string && data.status in ['developing', 'published']
         && data.title is string && data.title.size() >= 1 && data.title.size() <= 160
-        && data.prompt is string && data.prompt.size() >= 1 && data.prompt.size() <= 600
-        && data.durationMinutes is number && data.durationMinutes >= 5 && data.durationMinutes <= 10
-        && data.totalDurationSec is number && data.totalDurationSec >= 300 && data.totalDurationSec <= 1200
-        && data.theme is string && data.theme in ['cinematic', 'editorial', 'tech', 'minimal']
-        && data.language is string && data.language in ['id', 'en']
-        && data.voiceName is string && data.voiceName.size() >= 1 && data.voiceName.size() <= 40
-        && data.scenes is list && data.scenes.size() >= 1 && data.scenes.size() <= 30 && data.scenes[0] is map
+        && data.releaseNotes is string && data.releaseNotes.size() >= 1 && data.releaseNotes.size() <= 2000
+        && data.changes is list && data.changes.size() <= 20 && (data.changes.size() == 0 || (data.changes[0] is string && data.changes[0].size() <= 240))
+        && data.packageUrl is string && data.packageUrl.size() <= 500
+        && data.buildTarget is string && data.buildTarget.size() >= 1 && data.buildTarget.size() <= 40
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
 
-    match /users/{userId}/preferences/{prefId} {
-      allow get: if isSignedIn() && isValidId(userId) && isValidId(prefId) && isOwner(userId);
-      allow list: if isSignedIn() && isOwner(userId) && resource.data.ownerId == request.auth.uid;
-      allow create: if isSignedIn()
-        && isValidId(userId)
-        && isValidId(prefId)
-        && isOwner(userId)
-        && isValidStudioPreference(incoming())
+    match /appReleases/{releaseId} {
+      // Published releases are readable for app update checks; developing builds are strictly admin-only.
+      allow get: if isValidId(releaseId) && ((resource != null && existing().status == 'published') || isAdmin());
+      allow list: if existing().status == 'published' || isVerifiedAdminEmail();
+
+      allow create: if isAdmin()
+        && isValidId(releaseId)
+        && isValidAppRelease(incoming())
         && incoming().createdAt == request.time
         && incoming().updatedAt == request.time;
-      allow update: if isSignedIn()
-        && isValidId(userId)
-        && isValidId(prefId)
-        && isOwner(userId)
-        && isValidStudioPreference(incoming())
+
+      allow update: if isAdmin()
+        && isValidId(releaseId)
+        && isValidAppRelease(incoming())
         && incoming().ownerId == existing().ownerId
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time
-        && incoming().diff(existing()).affectedKeys().hasOnly([
-          'showCaptions',
-          'fontFamily',
-          'style',
-          'fontSize',
-          'position',
-          'highlightColor',
-          'caps',
-          'italic',
-          'fontWeight',
-          'clipLengthRange',
-          'clipLimit',
-          'framingMode',
-          'exportFormat',
-          'updatedAt'
-        ]);
-      allow delete: if isSignedIn() && isValidId(userId) && isValidId(prefId) && isOwner(userId);
+        && (
+          // Action 1: Edit release fields (draft or admin correction)
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'version',
+            'baseVersion',
+            'updateType',
+            'status',
+            'title',
+            'releaseNotes',
+            'changes',
+            'packageUrl',
+            'buildTarget',
+            'updatedAt'
+          ])
+          ||
+          // Action 2: Promote developing build to published
+          (
+            existing().status == 'developing'
+            && incoming().status == 'published'
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+          )
+        );
+
+      allow delete: if isAdmin() && isValidId(releaseId);
     }
 
-    match /users/{userId}/projects/{projectId} {
-      allow get: if isSignedIn() && isValidId(userId) && isValidId(projectId) && isOwner(userId);
-      allow list: if isSignedIn() && isOwner(userId) && resource.data.ownerId == request.auth.uid;
-      allow create: if isSignedIn()
-        && isValidId(userId)
-        && isValidId(projectId)
-        && isOwner(userId)
-        && isValidClipProject(incoming())
-        && incoming().createdAt == request.time
-        && incoming().updatedAt == request.time;
-      allow update: if isSignedIn()
-        && isValidId(userId)
-        && isValidId(projectId)
-        && isOwner(userId)
-        && isValidClipProject(incoming())
-        && incoming().ownerId == existing().ownerId
-        && incoming().projectKey == existing().projectKey
-        && incoming().createdAt == existing().createdAt
-        && incoming().updatedAt == request.time
-        && incoming().diff(existing()).affectedKeys().hasOnly([
-          'projectName',
-          'sourceLabel',
-          'durationSec',
-          'clipsCount',
-          'exportedCount',
-          'clips',
-          'updatedAt'
-        ]);
-      allow delete: if isSignedIn() && isValidId(userId) && isValidId(projectId) && isOwner(userId);
-    }
-
-    match /users/{userId}/aiScripts/{scriptId} {
-      allow get: if isSignedIn() && isValidId(userId) && isValidId(scriptId) && isOwner(userId);
-      allow list: if isSignedIn() && isOwner(userId) && resource.data.ownerId == request.auth.uid;
-      allow create: if isSignedIn()
-        && isValidId(userId)
-        && isValidId(scriptId)
-        && isOwner(userId)
-        && isValidAiScript(incoming())
-        && incoming().createdAt == request.time
-        && incoming().updatedAt == request.time;
-      allow update: if isSignedIn()
-        && isValidId(userId)
-        && isValidId(scriptId)
-        && isOwner(userId)
-        && isValidAiScript(incoming())
-        && incoming().ownerId == existing().ownerId
-        && incoming().createdAt == existing().createdAt
-        && incoming().updatedAt == request.time
-        && incoming().diff(existing()).affectedKeys().hasOnly([
-          'title',
-          'prompt',
-          'durationMinutes',
-          'totalDurationSec',
-          'theme',
-          'language',
-          'voiceName',
-          'scenes',
-          'updatedAt'
-        ]);
-      allow delete: if isSignedIn() && isValidId(userId) && isValidId(scriptId) && isOwner(userId);
+    match /admins/{adminId} {
+      allow get: if isSignedIn() && isValidId(adminId) && request.auth.uid == adminId;
+      allow list, create, update, delete: if false;
     }
   }
 }

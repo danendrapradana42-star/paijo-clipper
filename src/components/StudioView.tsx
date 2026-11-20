@@ -1,8 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Archive,
-  CloudUpload,
-  Database,
   Download,
   Pause,
   Play,
@@ -11,7 +9,6 @@ import {
   Sparkles,
   Square,
   Subtitles,
-  Trash2,
   Upload,
   Volume2,
   VolumeX,
@@ -36,7 +33,6 @@ import {
   updateMotionFocus,
 } from '../utils/canvasRenderer';
 import { ensureFontLoaded } from '../utils/fontCatalog';
-import type { SavedClipProject } from '../utils/firestoreSync';
 import { formatClock, formatTimeDecimal } from '../utils/subtitles';
 import { supportedExportMime, syncPreviewAudio } from '../utils/videoExporter';
 import { downloadProjectZip } from '../utils/zipExporter';
@@ -103,14 +99,6 @@ interface StudioViewProps {
   latestExportRecords: ExportedClipRecord[];
   audioEnv: AudioEnvelopeData | null;
   onChangeSourceHome: () => void;
-  fbSignedIn: boolean;
-  onSignInGoogle: () => void;
-  savedCloudProjects: SavedClipProject[];
-  savingCloudProject: boolean;
-  cloudProjectNotice: string;
-  onSaveProjectCloud: () => void;
-  onLoadCloudProject: (project: SavedClipProject) => void;
-  onDeleteCloudProject: (projectId: string) => void;
 }
 
 export function StudioView(props: StudioViewProps) {
@@ -174,14 +162,6 @@ export function StudioView(props: StudioViewProps) {
     latestExportRecords,
     audioEnv,
     onChangeSourceHome,
-    fbSignedIn,
-    onSignInGoogle,
-    savedCloudProjects,
-    savingCloudProject,
-    cloudProjectNotice,
-    onSaveProjectCloud,
-    onLoadCloudProject,
-    onDeleteCloudProject,
   } = props;
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -929,43 +909,15 @@ export function StudioView(props: StudioViewProps) {
                     Klik kartu untuk pratinjau, atau geser awal/akhir klip ±0.5 detik.
                   </p>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {fbSignedIn ? (
-                    <button
-                      type="button"
-                      disabled={!videoReady || !clips.length || savingCloudProject}
-                      onClick={onSaveProjectCloud}
-                      className="px-3 py-1.5 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] disabled:opacity-40 text-xs font-semibold text-[#c7ff55] inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-                    >
-                      <CloudUpload className="w-3.5 h-3.5" />
-                      {savingCloudProject ? 'Menyimpan…' : 'Simpan ke Firestore'}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={onSignInGoogle}
-                      className="px-3 py-1.5 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-[#cbd2de] inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-                    >
-                      <Database className="w-3.5 h-3.5 text-[#c7ff55]" />
-                      Masuk Google (Cloud)
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    disabled={!clips.length}
-                    onClick={() => onChangeTab('export')}
-                    className="px-3.5 py-1.5 rounded-lg bg-[#ff5436] hover:bg-[#ff6b52] disabled:opacity-40 text-white text-xs font-bold cursor-pointer whitespace-nowrap"
-                  >
-                    Lanjut ke Ekspor →
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  disabled={!clips.length}
+                  onClick={() => onChangeTab('export')}
+                  className="px-3.5 py-1.5 rounded-lg bg-[#ff5436] hover:bg-[#ff6b52] disabled:opacity-40 text-white text-xs font-bold cursor-pointer"
+                >
+                  Lanjut ke Ekspor →
+                </button>
               </div>
-
-              {cloudProjectNotice && (
-                <div className="text-[11.5px] text-[#c7ff55] bg-[#0d1017] border border-[#2d3548] rounded-lg px-3 py-2">
-                  {cloudProjectNotice}
-                </div>
-              )}
 
               {activeClip && (
                 <TrimBar
@@ -1077,65 +1029,6 @@ export function StudioView(props: StudioViewProps) {
                 </div>
               )}
             </div>
-
-            {fbSignedIn && (
-              <div className="bg-[#11141c] border border-[#1e2432] rounded-xl p-5 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Database className="w-4 h-4 text-[#c7ff55]" />
-                    <h3 className="text-sm font-bold text-white">
-                      Projek Tersimpan di Firestore ({savedCloudProjects.length})
-                    </h3>
-                  </div>
-                  <span className="text-[11px] text-[#8f98a8]">
-                    Sinkron otomatis lintas perangkat untuk akun Anda
-                  </span>
-                </div>
-
-                {savedCloudProjects.length === 0 ? (
-                  <p className="text-xs text-[#8f98a8]">
-                    Belum ada projek klip tersimpan di Firestore. Setelah video dipotong, klik <strong className="text-[#e8edf5]">Simpan ke Firestore</strong> untuk mencadangkan daftar timestamp klip.
-                  </p>
-                ) : (
-                  <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
-                    {savedCloudProjects.map((proj) => (
-                      <div
-                        key={proj.id}
-                        className="bg-[#0d1017] border border-[#1e2432] rounded-lg px-3 py-2.5 flex flex-wrap items-center justify-between gap-2"
-                      >
-                        <div className="min-w-0">
-                          <div className="text-xs font-bold text-white truncate">
-                            {proj.projectName}
-                          </div>
-                          <div className="text-[11px] font-mono tabular-nums text-[#8f98a8]">
-                            {proj.clipsCount} klip · {formatClock(proj.durationSec)} ·{' '}
-                            {new Date(proj.updatedAtMs).toLocaleDateString('id-ID')}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            type="button"
-                            disabled={exporting}
-                            onClick={() => onLoadCloudProject(proj)}
-                            className="px-2.5 py-1 rounded-md bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-[11px] font-semibold text-[#c7ff55] cursor-pointer disabled:opacity-40"
-                          >
-                            Terapkan Klip
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onDeleteCloudProject(proj.id)}
-                            title="Hapus projek dari Firestore"
-                            className="p-1.5 rounded-md bg-[#181c27] hover:bg-red-950/50 border border-[#2d3548] text-[#aeb6c4] hover:text-red-300 cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         )}
 

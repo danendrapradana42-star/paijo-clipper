@@ -154,6 +154,86 @@ function uint8ToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+export interface AudioTranscribeChunk {
+  base64: string;
+  mimeType: string;
+  offsetSec: number;
+  durationSec: number;
+}
+
+export async function extractWavChunksForTranscription(
+  file: File,
+  signal?: AbortSignal,
+  maxChunkDurationSec = 60
+): Promise<{ totalDurationSec: number; chunks: AudioTranscribeChunk[] }> {
+  if (signal?.aborted) {
+    throw new DOMException('Pembuatan subtitle dibatalkan.', 'AbortError');
+  }
+  const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  const OfflineCtx = window.OfflineAudioContext || (window as unknown as { webkitOfflineAudioContext: typeof OfflineAudioContext }).webkitOfflineAudioContext;
+  if (!AudioCtx || !OfflineCtx) {
+    throw new Error('Browser tidak mendukung pemrosesan audio OfflineAudioContext.');
+  }
+
+  const ctx = new AudioCtx();
+  let decoded: AudioBuffer;
+  try {
+    const raw = await file.arrayBuffer();
+    if (signal?.aborted) {
+      throw new DOMException('Pembuatan subtitle dibatalkan.', 'AbortError');
+    }
+    decoded = await ctx.decodeAudioData(raw);
+  } finally {
+    ctx.close().catch(() => {});
+  }
+
+  if (signal?.aborted) {
+    throw new DOMException('Pembuatan subtitle dibatalkan.', 'AbortError');
+  }
+
+  if (decoded.duration > 1200) {
+    throw new Error('Durasi audio melebihi batas 20 menit untuk transkripsi AI. Gunakan file .srt/.vtt lokal.');
+  }
+
+  // Render full mono stream at 16 kHz, then slice into <= 60s WAV chunks (~1.92 MB raw / ~2.56 MB base64)
+  // so every POST /api/transcribe stays safely under Vercel's 4.5 MB serverless request limit.
+  const targetRate = 16000;
+  const offline = new OfflineCtx(1, Math.max(1, Math.ceil(decoded.duration * targetRate)), targetRate);
+  const src = offline.createBufferSource();
+  src.buffer = decoded;
+  src.connect(offline.destination);
+  src.start(0);
+  const rendered = await offline.startRendering();
+
+  if (signal?.aborted) {
+    throw new DOMException('Pembuatan subtitle dibatalkan.', 'AbortError');
+  }
+
+  const monoSamples = rendered.getChannelData(0);
+  const samplesPerChunk = Math.max(targetRate * 10, Math.floor(maxChunkDurationSec * targetRate));
+  const chunks: AudioTranscribeChunk[] = [];
+
+  for (let startIdx = 0; startIdx < monoSamples.length; startIdx += samplesPerChunk) {
+    if (signal?.aborted) {
+      throw new DOMException('Pembuatan subtitle dibatalkan.', 'AbortError');
+    }
+    const endIdx = Math.min(monoSamples.length, startIdx + samplesPerChunk);
+    const slice = monoSamples.subarray(startIdx, endIdx);
+    const wavBytes = encodeMonoWav16(slice, targetRate);
+    chunks.push({
+      base64: uint8ToBase64(wavBytes),
+      mimeType: 'audio/wav',
+      offsetSec: startIdx / targetRate,
+      durationSec: slice.length / targetRate,
+    });
+  }
+
+  return {
+    totalDurationSec: decoded.duration,
+    chunks,
+  };
+}
+
 export async function extractWavBase64ForTranscription(
   file: File,
   signal?: AbortSignal
@@ -183,7 +263,6 @@ export async function extractWavBase64ForTranscription(
     throw new DOMException('Pembuatan subtitle dibatalkan.', 'AbortError');
   }
 
-  // Use 8kHz mono for longer videos (up to ~18 minutes inside 18MB WAV) or 16kHz for <= 9 min
   const targetRate = decoded.duration > 520 ? 8000 : 16000;
   if (decoded.duration > 1100) {
     throw new Error('Durasi audio melebihi batas 18 menit untuk transkripsi AI sekali jalan. Gunakan file .srt/.vtt lokal.');

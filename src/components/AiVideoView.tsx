@@ -3,8 +3,6 @@ import {
   BookOpen,
   ChevronDown,
   ChevronUp,
-  CloudUpload,
-  Database,
   Download,
   ImagePlus,
   Mic,
@@ -12,7 +10,6 @@ import {
   Play,
   Sparkles,
   Square,
-  Trash2,
   Volume2,
 } from 'lucide-react';
 import type {
@@ -33,7 +30,6 @@ import {
   renderTimelineFrame,
   type RenderedSceneFrame,
 } from '../utils/aiPipeline';
-import type { SavedAiScript } from '../utils/firestoreSync';
 import { buildSrtFromScenes, formatClock } from '../utils/subtitles';
 import { CaptionStylePanel } from './CaptionStylePanel';
 
@@ -42,21 +38,6 @@ interface AiVideoViewProps {
   onChangeCaptionSettings: (patch: Partial<CaptionSettings>) => void;
   onRegisterExport: (record: ExportedClipRecord) => void;
   onSendToStudio: (file: File, srtText: string, title: string) => void;
-  fbSignedIn: boolean;
-  onSignInGoogle: () => void;
-  savedAiScripts: SavedAiScript[];
-  onSaveScriptCloud: (payload: {
-    scriptId?: string;
-    title: string;
-    prompt: string;
-    durationMinutes: number;
-    totalDurationSec: number;
-    theme: AiTheme;
-    language: 'id' | 'en';
-    voiceName: string;
-    scenes: AiScene[];
-  }) => Promise<string | void>;
-  onDeleteScriptCloud: (scriptId: string) => Promise<void>;
 }
 
 const VOICE_PRESETS: Array<{ id: string; label: string; shortName: string; previewUrl?: string }> = [
@@ -104,11 +85,6 @@ export function AiVideoView({
   onChangeCaptionSettings,
   onRegisterExport,
   onSendToStudio,
-  fbSignedIn,
-  onSignInGoogle,
-  savedAiScripts,
-  onSaveScriptCloud,
-  onDeleteScriptCloud,
 }: AiVideoViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const micRecorderRef = useRef<{ recorder: MediaRecorder; chunks: BlobPart[]; stream: MediaStream } | null>(null);
@@ -142,8 +118,6 @@ export function AiVideoView({
   const [exportFormat, setExportFormat] = useState<ExportFormat>('webm');
 
   const [title, setTitle] = useState('');
-  const [activeCloudScriptId, setActiveCloudScriptId] = useState<string | undefined>(undefined);
-  const [savingScript, setSavingScript] = useState(false);
   const [scenes, setScenes] = useState<AiScene[]>([]);
   const [frames, setFrames] = useState<RenderedSceneFrame[]>([]);
   const [voices, setVoices] = useState<Array<AiVoiceTrack | null>>([]);
@@ -297,7 +271,6 @@ export function AiVideoView({
 
       const nextScenes: AiScene[] = data.scenes || [];
       setTitle(data.title || prompt.trim());
-      setActiveCloudScriptId(undefined);
       setScenes(nextScenes);
       setFrames([]);
       setVoices(new Array(nextScenes.length).fill(null));
@@ -820,7 +793,7 @@ export function AiVideoView({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
               disabled={busy}
@@ -829,125 +802,12 @@ export function AiVideoView({
             >
               1. Buat Naskah &amp; Timestamp AI
             </button>
-            {fbSignedIn ? (
-              <button
-                type="button"
-                disabled={busy || scenes.length === 0 || savingScript}
-                onClick={async () => {
-                  if (!scenes.length) return;
-                  setSavingScript(true);
-                  try {
-                    const computedTotal = Math.max(
-                      300,
-                      scenes.reduce((acc, s) => acc + (Number(s.durationSec) || 20), 0)
-                    );
-                    const savedId = await onSaveScriptCloud({
-                      scriptId: activeCloudScriptId,
-                      title: title || prompt.trim() || 'Naskah Video AI',
-                      prompt: prompt.trim() || title || 'Topik Video AI',
-                      durationMinutes,
-                      totalDurationSec: computedTotal,
-                      theme,
-                      language,
-                      voiceName,
-                      scenes,
-                    });
-                    if (savedId) setActiveCloudScriptId(savedId);
-                    setStatusText('Naskah Video AI tersimpan di Firestore!');
-                  } catch (err) {
-                    setStatusText(err instanceof Error ? err.message : String(err));
-                  } finally {
-                    setSavingScript(false);
-                  }
-                }}
-                className="px-3.5 py-2 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] disabled:opacity-40 text-xs font-semibold text-[#c7ff55] inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                <CloudUpload className="w-3.5 h-3.5" />
-                {savingScript ? 'Menyimpan…' : 'Simpan Naskah ke Firestore'}
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={onSignInGoogle}
-                className="px-3.5 py-2 rounded-lg bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-xs font-semibold text-[#cbd2de] inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                <Database className="w-3.5 h-3.5 text-[#c7ff55]" />
-                Masuk Google untuk Simpan Cloud
-              </button>
-            )}
             <span className="text-xs font-mono tabular-nums text-[#8f98a8]">
               {scenes.length > 0
                 ? `${scenes.length} adegan siap · Total ${formatClock(totalSec)}`
                 : 'Belum ada naskah (min. 5:00)'}
             </span>
           </div>
-
-          {fbSignedIn && savedAiScripts.length > 0 && (
-            <div className="pt-3 border-t border-[#1e2432] space-y-2">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-white">
-                <Database className="w-3.5 h-3.5 text-[#c7ff55]" />
-                <span>Naskah Tersimpan di Firestore ({savedAiScripts.length})</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[180px] overflow-y-auto pr-1">
-                {savedAiScripts.map((scItem) => (
-                  <div
-                    key={scItem.id}
-                    className="bg-[#0d1017] border border-[#1e2432] rounded-lg px-3 py-2 flex items-center justify-between gap-2"
-                  >
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-white truncate">{scItem.title}</div>
-                      <div className="text-[11px] font-mono tabular-nums text-[#8f98a8]">
-                        {scItem.durationMinutes} mnt · {scItem.scenes.length} adegan · {scItem.voiceName}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => {
-                          voices.forEach((v) => {
-                            if (v?.url) {
-                              try {
-                                URL.revokeObjectURL(v.url);
-                              } catch {}
-                            }
-                          });
-                          setActiveCloudScriptId(scItem.id);
-                          setTitle(scItem.title);
-                          setPrompt(scItem.prompt);
-                          setDurationMinutes(scItem.durationMinutes);
-                          setTheme(scItem.theme);
-                          setLanguage(scItem.language);
-                          setVoiceName(scItem.voiceName);
-                          setScenes(scItem.scenes);
-                          setFrames([]);
-                          setVoices(new Array(scItem.scenes.length).fill(null));
-                          setFinalVideo(null);
-                          setPreviewPlaying(false);
-                          setPreviewSec(0);
-                          setStatusText(
-                            `Naskah "${scItem.title}" (${scItem.scenes.length} adegan) dimuat dari Firestore. Lanjutkan Tahap 2 untuk render visual.`
-                          );
-                        }}
-                        className="px-2 py-1 rounded bg-[#181c27] hover:bg-[#212636] border border-[#2d3548] text-[11px] font-semibold text-[#c7ff55] cursor-pointer disabled:opacity-40"
-                      >
-                        Muat
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => onDeleteScriptCloud(scItem.id)}
-                        title="Hapus naskah dari Firestore"
-                        className="p-1 rounded bg-[#181c27] hover:bg-red-950/50 border border-[#2d3548] text-[#aeb6c4] hover:text-red-300 cursor-pointer disabled:opacity-40"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </section>
 
         {/* Stage 2 & 3: Scene Cards + Visuals + Voice */}

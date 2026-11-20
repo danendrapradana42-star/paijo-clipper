@@ -1,22 +1,23 @@
-# Security Specification — Auto Clipper Studio Firestore Rules
+# Security Specification — Auto Clipper Studio App Updates Firestore Rules
 
 ## 1. Data Invariants
-1. Every document under `/users/{userId}/preferences/{prefId}`, `/users/{userId}/projects/{projectId}`, and `/users/{userId}/aiScripts/{scriptId}` belongs exclusively to `userId` (`ownerId == request.auth.uid == userId`).
-2. Writes and reads require `request.auth != null && request.auth.token.email_verified == true`.
-3. All document IDs (`userId`, `prefId`, `projectId`, `scriptId`) match `^[a-zA-Z0-9_-]+$` and `size() <= 128`.
-4. All timestamps (`createdAt`, `updatedAt`) MUST equal `request.time` on create; `createdAt` and `ownerId` are immutable on update, and `updatedAt` MUST equal `request.time` on update.
-5. No unbounded arrays or strings: `clips` array capped at `<= 25` items, `scenes` array capped at `<= 30` items, every string field explicitly bounded.
+1. Firestore is dedicated exclusively to application update releases (`/appReleases/{releaseId}`) and read-only admin role lookups (`/admins/{adminId}`).
+2. All writes (`create`, `update`, `delete`) and reads of `developing` (in-development) releases are restricted strictly to the verified developer admin (`request.auth != null && request.auth.token.email_verified == true` AND matching `danendrapradana44@gmail.com` or `/admins/{uid}`).
+3. Public/client update checks can ONLY read documents where `resource.data.status == 'published'`; `developing` releases are never exposed to non-admins.
+4. No PII (email, phone, address) is stored inside `/appReleases/{releaseId}`.
+5. `version` and `baseVersion` MUST match `^[0-9]+\.[0-9]+\.[0-9]+$`, `updateType` is strictly `'minor'` (+0.0.1) or `'major'` (+0.1.0), and `status` is `'developing'` or `'published'`.
+6. `createdAt` and `ownerId` are immutable; timestamps MUST equal `request.time`.
 
 ## 2. Adversarial "Dirty Dozen" Payloads (Expected: PERMISSION_DENIED)
-1. Unauthenticated read/write to `/users/userA/preferences/studio`.
-2. Authenticated userB with `email_verified: false` writing to own path.
-3. UserB reading or listing `/users/userA/projects`.
-4. UserA creating `/users/userA/projects/proj1` with `ownerId: "userB"` (identity spoofing).
-5. UserA creating `/users/userA/preferences/studio` with shadow field `isAdmin: true` (rejected by `hasOnly`).
-6. UserA creating `/users/userA/projects/proj1` with client-forged `createdAt` timestamp != `request.time`.
-7. UserA updating `/users/userA/projects/proj1` trying to mutate `createdAt` or `ownerId`.
-8. UserA updating `/users/userA/aiScripts/s1` with ghost field `systemRole: "admin"` (rejected by `affectedKeys().hasOnly(...)`).
-9. UserA creating `/users/userA/aiScripts/bad..id!` with illegal characters in document ID (rejected by `isValidId`).
-10. UserA creating `/users/userA/projects/proj1` with `clips` array containing 100 items or non-map element (rejected by size & first-item guard).
-11. UserA creating `/users/userA/aiScripts/s1` with `durationMinutes: 2` (< 5 min minimum) or 50 scenes.
-12. Any read or write to unprotected paths like `/test/connection` or `/admins/userA`.
+1. Unauthenticated user attempting `get` or `list` on `/appReleases` where `status == 'developing'`.
+2. Unauthenticated user attempting `create` on `/appReleases/v1-5-1`.
+3. Non-admin authenticated user (`other@gmail.com`, `email_verified: true`) creating/updating/deleting `/appReleases/v1-5-1`.
+4. Spoofed admin email (`danendrapradana44@gmail.com`) with `email_verified: false` writing or reading `developing` releases.
+5. Admin creating `/appReleases/v1-5-1` with `ownerId: "someoneElse"` (identity spoofing).
+6. Admin creating `/appReleases/v1-5-1` with shadow field `isOfficial: true` (rejected by `hasOnly`).
+7. Admin creating `/appReleases/v1-5-1` with client-forged `createdAt` != `request.time`.
+8. Admin updating `/appReleases/v1-5-1` trying to mutate `createdAt` or `ownerId`.
+9. Admin creating `/appReleases/v1-5-1` with invalid version string `"v1.5.1-beta"` (rejected by regex).
+10. Admin creating `/appReleases/bad..id!` with illegal document ID characters (rejected by `isValidId`).
+11. Admin creating `/appReleases/v1-5-1` with `changes` array containing 50 items or non-string first element (rejected by size & type guard).
+12. Any client attempting to write to `/admins/{uid}` or any legacy/catch-all path like `/users/u1/projects/p1`.
