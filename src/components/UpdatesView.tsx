@@ -187,6 +187,65 @@ export function UpdatesView({
       fbUser.email?.toLowerCase() === DEVELOPER_ADMIN_EMAIL.toLowerCase()
   );
 
+  // Developer-only panel visibility (hidden from regular users by default)
+  const [devUnlocked, setDevUnlocked] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get('dev') === '1' || window.location.hash === '#dev') {
+        sessionStorage.setItem('paijoclip.devMode', '1');
+        return true;
+      }
+      return sessionStorage.getItem('paijoclip.devMode') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [devTapCount, setDevTapCount] = useState(0);
+
+  const showDeveloperTools = devUnlocked || isDeveloperAdmin;
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key.toUpperCase() === 'D') {
+        e.preventDefault();
+        setDevUnlocked((prev) => {
+          const next = !prev;
+          try {
+            if (next) sessionStorage.setItem('paijoclip.devMode', '1');
+            else sessionStorage.removeItem('paijoclip.devMode');
+          } catch {}
+          return next;
+        });
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    if (devTapCount <= 0) return;
+    const timer = window.setTimeout(() => setDevTapCount(0), 1600);
+    return () => window.clearTimeout(timer);
+  }, [devTapCount]);
+
+  const handleVersionTap = () => {
+    const next = devTapCount + 1;
+    if (next >= 5) {
+      setDevTapCount(0);
+      setDevUnlocked((prev) => {
+        const toggled = !prev;
+        try {
+          if (toggled) sessionStorage.setItem('paijoclip.devMode', '1');
+          else sessionStorage.removeItem('paijoclip.devMode');
+        } catch {}
+        return toggled;
+      });
+    } else {
+      setDevTapCount(next);
+    }
+  };
+
   // Highest known version (client 1.5.0 vs latest Firestore release)
   const highestKnownVersion = useMemo(() => {
     const pool = [
@@ -396,9 +455,11 @@ export function UpdatesView({
           <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-white">
             {t('updates.title')}
           </h1>
-          <p className="text-xs text-[#93a7cc] mt-1">
-            {t('updates.subtitle')}
-          </p>
+          {showDeveloperTools && (
+            <p className="text-xs text-[#93a7cc] mt-1">
+              {t('updates.subtitle')}
+            </p>
+          )}
         </div>
         <button
           type="button"
@@ -424,20 +485,25 @@ export function UpdatesView({
                 {t('updates.activeVersion')}
               </div>
               <div className="flex items-baseline gap-3">
-                <span className="text-2xl sm:text-3xl font-extrabold font-mono tabular-nums text-white">
+                <span
+                  onClick={handleVersionTap}
+                  className="text-2xl sm:text-3xl font-extrabold font-mono tabular-nums text-white select-none"
+                >
                   v{CLIENT_APP_VERSION}
                 </span>
                 <span className="text-xs font-semibold text-[#ff8224]">
                   Paijo Clip
                 </span>
               </div>
-              <div className="text-xs text-[#93a7cc] font-mono tabular-nums">
-                Server: v{serverVersion}
-                {versionInfo?.nodeVersion ? ` · Runtime ${versionInfo.nodeVersion}` : ''}
-                {versionInfo?.serverStartedAt
-                  ? ` · ${formatTimestamp(versionInfo.serverStartedAt, bcp47)}`
-                  : ''}
-              </div>
+              {showDeveloperTools && (
+                <div className="text-xs text-[#93a7cc] font-mono tabular-nums">
+                  Server: v{serverVersion}
+                  {versionInfo?.nodeVersion ? ` · Runtime ${versionInfo.nodeVersion}` : ''}
+                  {versionInfo?.serverStartedAt
+                    ? ` · ${formatTimestamp(versionInfo.serverStartedAt, bcp47)}`
+                    : ''}
+                </div>
+              )}
             </div>
           </div>
 
@@ -610,52 +676,55 @@ export function UpdatesView({
           </div>
         )}
 
-        {/* Environment Summary Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-1">
-          <div className="bg-[#0c1733] border border-[#1e3159] rounded-lg p-3">
-            <div className="text-[11px] text-[#93a7cc]">{t('updates.firestoreStorage')}</div>
-            <div className="text-xs font-bold text-white mt-0.5 truncate" title={firestoreDatabaseId}>
-              {firestoreStatus.offline
-                ? 'Offline'
-                : firestoreStatus.reachable
-                  ? t('updates.connected', { project: firestoreProjectId })
+        {/* Developer-Only Environment Summary Grid */}
+        {showDeveloperTools && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-1">
+            <div className="bg-[#0c1733] border border-[#1e3159] rounded-lg p-3">
+              <div className="text-[11px] text-[#93a7cc]">{t('updates.firestoreStorage')}</div>
+              <div className="text-xs font-bold text-white mt-0.5 truncate" title={firestoreDatabaseId}>
+                {firestoreStatus.offline
+                  ? 'Offline'
+                  : firestoreStatus.reachable
+                    ? t('updates.connected', { project: firestoreProjectId })
+                    : t('updates.checking')}
+              </div>
+              <div className="text-[10.5px] text-[#c7ff55] font-mono truncate mt-0.5">
+                {t('updates.publishedCount', { count: publishedReleases.length })}
+                {isDeveloperAdmin ? ` · ${adminReleases.filter((r) => r.status === 'developing').length} draft` : ''}
+              </div>
+            </div>
+            <div className="bg-[#0c1733] border border-[#1e3159] rounded-lg p-3">
+              <div className="text-[11px] text-[#93a7cc]">{t('updates.versionRules')}</div>
+              <div className="text-xs font-bold text-white mt-0.5 font-mono">
+                Minor +0.0.1 · Major +0.1.0
+              </div>
+              <div className="text-[10.5px] text-[#93a7cc] font-mono mt-0.5">
+                {t('updates.nextLabel')} v{computeNextVersion(highestKnownVersion, 'minor')} / v
+                {computeNextVersion(highestKnownVersion, 'major')}
+              </div>
+            </div>
+            <div className="bg-[#0c1733] border border-[#1e3159] rounded-lg p-3">
+              <div className="text-[11px] text-[#93a7cc]">{t('updates.geminiService')}</div>
+              <div className="text-xs font-bold text-white mt-0.5">
+                {versionInfo ? (versionInfo.aiConfigured ? t('updates.activeReady') : t('updates.notConfigured')) : t('updates.checking')}
+              </div>
+            </div>
+            <div className="bg-[#0c1733] border border-[#1e3159] rounded-lg p-3">
+              <div className="text-[11px] text-[#93a7cc]">{t('updates.ytStream')}</div>
+              <div className="text-xs font-bold text-white mt-0.5">
+                {versionInfo
+                  ? versionInfo.ytDlpReady
+                    ? 'yt-dlp Ready'
+                    : t('updates.webUploadMode')
                   : t('updates.checking')}
-            </div>
-            <div className="text-[10.5px] text-[#c7ff55] font-mono truncate mt-0.5">
-              {t('updates.publishedCount', { count: publishedReleases.length })}
-              {isDeveloperAdmin ? ` · ${adminReleases.filter((r) => r.status === 'developing').length} draft` : ''}
+              </div>
             </div>
           </div>
-          <div className="bg-[#0c1733] border border-[#1e3159] rounded-lg p-3">
-            <div className="text-[11px] text-[#93a7cc]">{t('updates.versionRules')}</div>
-            <div className="text-xs font-bold text-white mt-0.5 font-mono">
-              Minor +0.0.1 · Major +0.1.0
-            </div>
-            <div className="text-[10.5px] text-[#93a7cc] font-mono mt-0.5">
-              {t('updates.nextLabel')} v{computeNextVersion(highestKnownVersion, 'minor')} / v
-              {computeNextVersion(highestKnownVersion, 'major')}
-            </div>
-          </div>
-          <div className="bg-[#0c1733] border border-[#1e3159] rounded-lg p-3">
-            <div className="text-[11px] text-[#93a7cc]">{t('updates.geminiService')}</div>
-            <div className="text-xs font-bold text-white mt-0.5">
-              {versionInfo ? (versionInfo.aiConfigured ? t('updates.activeReady') : t('updates.notConfigured')) : t('updates.checking')}
-            </div>
-          </div>
-          <div className="bg-[#0c1733] border border-[#1e3159] rounded-lg p-3">
-            <div className="text-[11px] text-[#93a7cc]">{t('updates.ytStream')}</div>
-            <div className="text-xs font-bold text-white mt-0.5">
-              {versionInfo
-                ? versionInfo.ytDlpReady
-                  ? 'yt-dlp Ready'
-                  : t('updates.webUploadMode')
-                : t('updates.checking')}
-            </div>
-          </div>
-        </div>
+        )}
       </section>
 
-      {/* Firestore Cloud Development & Release Staging */}
+      {/* Developer-Only Firestore Cloud Development & Release Staging */}
+      {showDeveloperTools && (
       <section className="bg-[#101d3d] border border-[#1e3159] rounded-xl p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-start gap-2.5">
@@ -1027,31 +1096,34 @@ export function UpdatesView({
           );
         })()}
       </section>
+      )}
 
-      {/* Optional External GitHub Release Check */}
-      <section className="bg-[#101d3d] border border-[#1e3159] rounded-xl p-5 space-y-3">
-        <div>
-          <h2 className="text-sm font-bold text-white">{t('updates.githubSectionTitle')}</h2>
-          <p className="text-xs text-[#93a7cc] mt-0.5">{t('updates.githubSectionDesc')}</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <input
-            type="text"
-            value={githubRepo}
-            onChange={(e) => setGithubRepo(e.target.value)}
-            placeholder="owner/auto-clipper-studio"
-            className="flex-1 min-w-[220px] bg-[#070e20] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#ff6b00]"
-          />
-          <button
-            type="button"
-            disabled={checking}
-            onClick={() => handleCheckUpdates(true)}
-            className="px-4 py-2 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-white disabled:opacity-40 cursor-pointer"
-          >
-            {checking ? t('updates.checking') : t('updates.checkGithubBtn')}
-          </button>
-        </div>
-      </section>
+      {/* Optional External GitHub Release Check (Developer Only) */}
+      {showDeveloperTools && (
+        <section className="bg-[#101d3d] border border-[#1e3159] rounded-xl p-5 space-y-3">
+          <div>
+            <h2 className="text-sm font-bold text-white">{t('updates.githubSectionTitle')}</h2>
+            <p className="text-xs text-[#93a7cc] mt-0.5">{t('updates.githubSectionDesc')}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <input
+              type="text"
+              value={githubRepo}
+              onChange={(e) => setGithubRepo(e.target.value)}
+              placeholder="owner/paijo-clip"
+              className="flex-1 min-w-[220px] bg-[#070e20] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#ff6b00]"
+            />
+            <button
+              type="button"
+              disabled={checking}
+              onClick={() => handleCheckUpdates(true)}
+              className="px-4 py-2 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-white disabled:opacity-40 cursor-pointer"
+            >
+              {checking ? t('updates.checking') : t('updates.checkGithubBtn')}
+            </button>
+          </div>
+        </section>
+      )}
 
       {/* Changelog */}
       <section className="bg-[#101d3d] border border-[#1e3159] rounded-xl p-5 space-y-3.5">

@@ -5,6 +5,7 @@ import {
   Film,
   LayoutGrid,
   Menu,
+  MonitorDown,
   RefreshCw,
   Sliders,
   Sparkles,
@@ -13,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { AiVideoView } from './components/AiVideoView';
+import { DesktopDownloadView } from './components/DesktopDownloadView';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ExportsView } from './components/ExportsView';
 import { HomeView } from './components/HomeView';
@@ -244,6 +246,14 @@ export default function App() {
       );
     } catch {}
   }, [captionSettings, clipLengthRange, clipLimit, framingMode, exportFormat]);
+
+  // Keep Windows desktop awake during active clip/batch exports
+  useEffect(() => {
+    window.paijoDesktop?.setRenderActive?.(exporting || batchRunning);
+    return () => {
+      window.paijoDesktop?.setRenderActive?.(false);
+    };
+  }, [exporting, batchRunning]);
 
   const handleSignInGoogle = async () => {
     setAuthError('');
@@ -1081,6 +1091,7 @@ export default function App() {
       activeLabel || t('crumb.studioFallback'),
     ],
     exports: [t('nav.exports'), t('crumb.exportsSub', { count: exportedRecords.length })],
+    download: [t('nav.downloadApp'), t('crumb.downloadSub')],
     updates: [t('nav.updates'), `Paijo Clip v${CLIENT_APP_VERSION}`],
   };
 
@@ -1226,6 +1237,23 @@ export default function App() {
               <span className="ml-auto font-mono tabular-nums text-[11px] text-[#93a7cc]">
                 {exportedRecords.length}
               </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setView('download');
+                setMobileMenuOpen(false);
+              }}
+              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13px] font-semibold transition-colors cursor-pointer ${
+                view === 'download'
+                  ? 'bg-[#16264d] text-white border border-[#2a4173]'
+                  : 'text-[#93a7cc] hover:bg-[#101d3d] hover:text-white border border-transparent'
+              }`}
+            >
+              <MonitorDown className={`w-4 h-4 shrink-0 ${view === 'download' ? 'text-[#ff6b00]' : ''}`} />
+              <span className="truncate">{t('nav.downloadApp')}</span>
+              <span className="ml-auto font-mono text-[11px] text-[#ff8224]">.exe</span>
             </button>
 
             <button
@@ -1630,6 +1658,13 @@ export default function App() {
                   });
                   setExportedRecords([]);
                 }}
+              />
+            )}
+
+            {view === 'download' && (
+              <DesktopDownloadView
+                onBackHome={() => setView('home')}
+                onOpenUpdates={() => setView('updates')}
               />
             )}
 

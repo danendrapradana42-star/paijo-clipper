@@ -118,8 +118,20 @@ export interface YoutubePreviewInfo {
   error?: string;
 }
 
-export type AppView = 'home' | 'aivideo' | 'studio' | 'exports' | 'updates';
+export type AppView = 'home' | 'aivideo' | 'studio' | 'exports' | 'download' | 'updates';
 export type StudioTab = 'clips' | 'style' | 'export';
+
+export interface PaijoDesktopBridge {
+  isDesktop: boolean;
+  platform: string;
+  setRenderActive?: (active: boolean) => void;
+}
+
+declare global {
+  interface Window {
+    paijoDesktop?: PaijoDesktopBridge;
+  }
+}
 
 export interface AiScene {
   index: number;

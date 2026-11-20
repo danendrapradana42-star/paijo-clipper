@@ -1,0 +1,40 @@
+appId: com.paijoclip.studio
+productName: Paijo Clip
+copyright: Copyright © 2026 Paijo Clip
+
+directories:
+  output: release
+  buildResources: electron/resources
+
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - electron/resources/**/*
+  - package.json
+  - "!**/*.map"
+
+asar: true
+
+win:
+  icon: electron/resources/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+
+nsis:
+  artifactName: "${productName}-${version}-Setup-${arch}.${ext}"
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Paijo Clip
+  installerIcon: electron/resources/icon.ico
+  uninstallerIcon: electron/resources/icon.ico
+  installerHeaderIcon: electron/resources/icon.ico
+
+portable:
+  artifactName: "${productName}-${version}-Portable-${arch}.${ext}"

@@ -2,6 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { GoogleGenAI, Type } from '@google/genai';
@@ -65,23 +66,52 @@ function extractYoutubeId(raw: string): string {
   return '';
 }
 
-let ytDlpAvailableCache: boolean | null = null;
-async function hasYtDlp(): Promise<boolean> {
-  if (ytDlpAvailableCache !== null) return ytDlpAvailableCache;
+let ytDlpCommandCache: string | null | undefined = undefined;
+async function resolveYtDlpCommand(): Promise<string | null> {
+  if (ytDlpCommandCache !== undefined) return ytDlpCommandCache;
   if (process.env.VERCEL) {
-    ytDlpAvailableCache = false;
-    return false;
+    ytDlpCommandCache = null;
+    return null;
   }
-  try {
-    await execFileAsync('yt-dlp', ['--version'], { timeout: 3000 });
-    ytDlpAvailableCache = true;
-  } catch {
-    ytDlpAvailableCache = false;
+
+  const localCandidates = [
+    process.env.PAIJO_EXE_DIR ? path.join(process.env.PAIJO_EXE_DIR, 'yt-dlp.exe') : '',
+    process.env.PAIJO_USER_DATA ? path.join(process.env.PAIJO_USER_DATA, 'yt-dlp.exe') : '',
+    process.env.PAIJO_APP_ROOT ? path.join(process.env.PAIJO_APP_ROOT, 'yt-dlp.exe') : '',
+    path.resolve(process.cwd(), 'yt-dlp.exe'),
+  ].filter(Boolean);
+
+  for (const candidate of localCandidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        await execFileAsync(candidate, ['--version'], { timeout: 3000 });
+        ytDlpCommandCache = candidate;
+        return candidate;
+      }
+    } catch {
+      // try next candidate
+    }
   }
-  return ytDlpAvailableCache;
+
+  for (const bin of process.platform === 'win32' ? ['yt-dlp.exe', 'yt-dlp'] : ['yt-dlp']) {
+    try {
+      await execFileAsync(bin, ['--version'], { timeout: 3000 });
+      ytDlpCommandCache = bin;
+      return bin;
+    } catch {
+      // not in PATH
+    }
+  }
+
+  ytDlpCommandCache = null;
+  return null;
 }
 
-const ytDownloadDir = '/tmp/autoclipper-yt';
+async function hasYtDlp(): Promise<boolean> {
+  return (await resolveYtDlpCommand()) !== null;
+}
+
+const ytDownloadDir = path.join(os.tmpdir(), 'paijoclip-yt');
 const ytFiles = new Map<string, { path: string; filename: string; createdAt: number }>();
 
 function cleanupExpiredYtFiles() {
@@ -122,13 +152,21 @@ export function createApiApp(): express.Express {
   const serverStartedAt = new Date().toISOString();
 
   function readAppPackageVersion(): string {
-    try {
-      const pkgPath = path.resolve(process.cwd(), 'package.json');
-      const parsed = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as { version?: string };
-      return String(parsed.version || '1.5.0');
-    } catch {
-      return '1.5.0';
+    const candidates = [
+      process.env.PAIJO_APP_ROOT ? path.join(process.env.PAIJO_APP_ROOT, 'package.json') : '',
+      path.resolve(process.cwd(), 'package.json'),
+    ].filter(Boolean);
+    for (const pkgPath of candidates) {
+      try {
+        if (fs.existsSync(pkgPath)) {
+          const parsed = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as { version?: string };
+          if (parsed.version) return String(parsed.version);
+        }
+      } catch {
+        // try next candidate
+      }
     }
+    return '1.5.0';
   }
 
   function compareSemver(a: string, b: string): number {
@@ -246,6 +284,97 @@ export function createApiApp(): express.Express {
     });
   });
 
+  interface DesktopArtifactEntry {
+    id: string;
+    kind: 'installer' | 'portable';
+    filename: string;
+    sizeBytes: number;
+    downloadUrl: string;
+    fullPath: string;
+    updatedAtMs: number;
+  }
+
+  function scanDesktopArtifacts(): DesktopArtifactEntry[] {
+    const rootCandidates = [
+      process.env.PAIJO_APP_ROOT || '',
+      process.cwd(),
+    ].filter(Boolean);
+    const searchDirs = new Set<string>();
+    for (const root of rootCandidates) {
+      searchDirs.add(path.resolve(root, 'release'));
+      searchDirs.add(path.resolve(root, 'public', 'downloads'));
+    }
+
+    const found: DesktopArtifactEntry[] = [];
+    const seenNames = new Set<string>();
+
+    for (const dir of searchDirs) {
+      try {
+        if (!fs.existsSync(dir)) continue;
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (!entry.isFile()) continue;
+          if (!/\.exe$/i.test(entry.name)) continue;
+          if (/uninstaller/i.test(entry.name)) continue;
+          if (seenNames.has(entry.name.toLowerCase())) continue;
+
+          const fullPath = path.join(dir, entry.name);
+          const stat = fs.statSync(fullPath);
+          if (!stat.isFile() || stat.size < 1024) continue;
+
+          seenNames.add(entry.name.toLowerCase());
+          const isPortable = /portable/i.test(entry.name);
+          const kind: 'installer' | 'portable' = isPortable ? 'portable' : 'installer';
+          const id = isPortable ? 'portable-exe' : 'setup-exe';
+          found.push({
+            id,
+            kind,
+            filename: entry.name,
+            sizeBytes: stat.size,
+            downloadUrl: `/api/desktop/download/${id}`,
+            fullPath,
+            updatedAtMs: Math.round(stat.mtimeMs),
+          });
+        }
+      } catch {
+        // ignore unreadable directories
+      }
+    }
+
+    return found.sort((a, b) => (a.kind === 'installer' ? -1 : 1) - (b.kind === 'installer' ? -1 : 1));
+  }
+
+  app.get('/api/desktop/info', (_req, res) => {
+    const artifacts = scanDesktopArtifacts().map(({ fullPath: _fp, ...pub }) => pub);
+    res.json({
+      appName: 'Paijo Clip',
+      version: readAppPackageVersion(),
+      platform: 'win32-x64',
+      runtime: process.env.VERCEL ? 'vercel-serverless' : 'node-server',
+      artifacts,
+    });
+  });
+
+  app.get('/api/desktop/download/:artifactId', (req, res) => {
+    const artifactId = String(req.params.artifactId || '').trim();
+    if (artifactId !== 'setup-exe' && artifactId !== 'portable-exe') {
+      res.status(400).json({ error: 'Target unduhan desktop tidak valid.' });
+      return;
+    }
+
+    const artifacts = scanDesktopArtifacts();
+    const match = artifacts.find((a) => a.id === artifactId) || artifacts[0];
+    if (!match || !fs.existsSync(match.fullPath)) {
+      res.status(404).json({
+        error: 'File installer .exe belum tersedia pada server saat ini.',
+      });
+      return;
+    }
+
+    res.setHeader('Content-Type', 'application/vnd.microsoft.portable-executable');
+    res.download(match.fullPath, match.filename);
+  });
+
   app.post('/api/youtube/info', async (req, res) => {
     const url = String(req.body?.url || '').trim();
     const id = extractYoutubeId(url);
@@ -300,8 +429,8 @@ export function createApiApp(): express.Express {
       return;
     }
 
-    const ytDlpReady = await hasYtDlp();
-    if (!ytDlpReady) {
+    const ytDlpBin = await resolveYtDlpCommand();
+    if (!ytDlpBin) {
       res.status(422).json({
         error:
           'Unduhan stream YouTube langsung belum tersedia di server web ini (yt-dlp tidak terpasang). Unggah file video (.mp4 / .webm / .mov) langsung dari perangkat Anda untuk pemrosesan instan tanpa batas.',
@@ -316,7 +445,7 @@ export function createApiApp(): express.Express {
       const quality = String(req.body?.quality || '720');
       const maxHeight = quality === '1080' ? '1080' : quality === '360' ? '360' : '720';
       await execFileAsync(
-        'yt-dlp',
+        ytDlpBin,
         [
           '-f',
           `bestvideo[height<=${maxHeight}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${maxHeight}][ext=mp4]/best`,

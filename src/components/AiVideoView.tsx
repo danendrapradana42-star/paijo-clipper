@@ -415,6 +415,7 @@ export function AiVideoView({
     }
     setPreviewPlaying(false);
     setBusy(true);
+    window.paijoDesktop?.setRenderActive?.(true);
     const ctrl = new AbortController();
     abortControllerRef.current = ctrl;
     setProgressPct(80);
@@ -474,6 +475,7 @@ export function AiVideoView({
     } catch (err) {
       setStatusText(err instanceof Error ? err.message : String(err));
     } finally {
+      window.paijoDesktop?.setRenderActive?.(false);
       abortControllerRef.current = null;
       setBusy(false);
     }

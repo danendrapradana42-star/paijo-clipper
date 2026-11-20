@@ -2,13 +2,21 @@
   "name": "auto-clipper-studio",
   "private": true,
   "version": "1.5.0",
+  "description": "Paijo Clip — Klip Vertikal 9:16, Batch Studio Lokal & Pembuat Video AI",
+  "author": "Paijo Clip",
   "type": "module",
+  "main": "dist-electron/main.cjs",
   "scripts": {
     "dev": "tsx server.ts",
     "start": "node server.ts",
     "build": "vite build",
     "preview": "vite preview",
-    "clean": "rm -rf dist server.js",
+    "electron:bundle": "esbuild electron/main.ts electron/preload.ts --bundle --platform=node --format=cjs --outdir=dist-electron --out-extension:.js=.cjs --external:electron --external:express --external:dotenv --external:@google/genai",
+    "electron:build": "npm run build && npm run electron:bundle",
+    "electron:dev": "npm run electron:bundle && ELECTRON_START_URL=http://localhost:3000 electron .",
+    "dist:win": "npm run electron:build && electron-builder --win --config electron-builder.yml",
+    "dist:win:dir": "npm run electron:build && electron-builder --win --dir --config electron-builder.yml",
+    "clean": "rm -rf dist dist-electron release server.js",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
@@ -28,14 +36,16 @@
     "vite": "^8.3.0"
   },
   "devDependencies": {
+    "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.4.21",
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0",
     "esbuild": "^0.25.0",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
-    "typescript": "^7.0.2",
-    "@types/express": "^4.17.21"
+    "typescript": "^7.0.2"
   }
 }
