@@ -1460,33 +1460,35 @@ export function UpdatesView({
         </section>
       )}
 
-      {/* Changelog */}
-      <section className="bg-[#101d3d] border border-[#1e3159] rounded-xl p-5 space-y-3.5">
-        <h2 className="text-sm font-bold text-white">{t('updates.changelogTitle')}</h2>
-        <div className="space-y-3">
-          {CHANGELOG.map((rel) => (
-            <article
-              key={rel.version}
-              className="bg-[#0c1733] border border-[#1e3159] rounded-lg p-3.5 space-y-2"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2.5">
-                  <span className="font-mono tabular-nums text-xs font-extrabold text-[#c7ff55]">
-                    v{rel.version}
-                  </span>
-                  <h3 className="text-xs font-bold text-white">{rel.title}</h3>
+      {/* Changelog (Web only; hidden inside Desktop .exe app) */}
+      {!isRunningDesktop && (
+        <section className="bg-[#101d3d] border border-[#1e3159] rounded-xl p-5 space-y-3.5">
+          <h2 className="text-sm font-bold text-white">{t('updates.changelogTitle')}</h2>
+          <div className="space-y-3">
+            {CHANGELOG.map((rel) => (
+              <article
+                key={rel.version}
+                className="bg-[#0c1733] border border-[#1e3159] rounded-lg p-3.5 space-y-2"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <span className="font-mono tabular-nums text-xs font-extrabold text-[#c7ff55]">
+                      v{rel.version}
+                    </span>
+                    <h3 className="text-xs font-bold text-white">{rel.title}</h3>
+                  </div>
+                  <span className="text-[11px] text-[#93a7cc]">{rel.date}</span>
                 </div>
-                <span className="text-[11px] text-[#93a7cc]">{rel.date}</span>
-              </div>
-              <ul className="list-disc list-inside space-y-1 text-xs text-[#b8c7e3]">
-                {rel.items.map((item, idx) => (
-                  <li key={idx}>{item}</li>
-                ))}
-              </ul>
-            </article>
-          ))}
-        </div>
-      </section>
+                <ul className="list-disc list-inside space-y-1 text-xs text-[#b8c7e3]">
+                  {rel.items.map((item, idx) => (
+                    <li key={idx}>{item}</li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
