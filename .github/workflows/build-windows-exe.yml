@@ -25,10 +25,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: "npm"
 
       - name: Install dependencies
-        run: npm install
+        run: npm install --no-audit --no-fund
 
       - name: Resolve version tag
         id: meta
@@ -48,16 +47,25 @@ jobs:
           "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Build Windows Setup Installer & Portable EXE
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run dist:win
+
+      - name: Verify generated Windows EXE binaries
+        shell: pwsh
+        run: |
+          $exes = Get-ChildItem -Path release -Filter "*.exe" -File | Where-Object { $_.Length -gt 20MB }
+          if (-not $exes -or $exes.Count -eq 0) {
+            Write-Error "No valid Windows .exe binaries (>20MB) were generated in release/."
+            exit 1
+          }
+          $exes | Select-Object Name, Length | Format-Table -AutoSize
 
       - name: Upload Windows EXE Workflow Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Paijo-Clip-Windows-EXE
-          path: |
-            release/*.exe
-            release/*.blockmap
-            release/latest.yml
+          path: release/*.exe
           if-no-files-found: error
 
       - name: Publish Setup & Portable EXE to GitHub Releases
@@ -67,7 +75,5 @@ jobs:
           name: Paijo Clip ${{ steps.meta.outputs.tag }} (Windows x64)
           generate_release_notes: true
           make_latest: true
-          files: |
-            release/*.exe
-            release/*.blockmap
-            release/latest.yml
+          files: release/*.exe
+          fail_on_unmatched_files: true
