@@ -246,22 +246,70 @@ export function renderTimelineFrame(
     progress: number,
     alpha: number,
     offsetX = 0,
-    extraScale = 1
+    extraScale = 1,
+    offsetY = 0
   ) => {
     ctx.save();
     ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
     let scale = extraScale;
+    let fxOffsetX = offsetX;
+    let fxOffsetY = offsetY;
+    let tiltRad = 0;
+
     if (options.visualEffect === 'kenburns') {
       scale *= 1 + progress * 0.08;
     } else if (options.visualEffect === 'pulse') {
       scale *= 1 + Math.sin(progress * Math.PI * 2) * 0.025;
+    } else if (options.visualEffect === 'pan_sweep') {
+      scale *= 1.12;
+      fxOffsetX += Math.sin(progress * Math.PI) * (W * 0.045);
+    } else if (options.visualEffect === 'handheld') {
+      scale *= 1.07;
+      fxOffsetX += Math.sin(sec * 2.8) * (W * 0.014) + Math.cos(sec * 4.1) * (W * 0.008);
+      fxOffsetY += Math.cos(sec * 2.2) * (H * 0.008) + Math.sin(sec * 3.7) * (H * 0.005);
+      tiltRad = Math.sin(sec * 1.9) * 0.009;
+    } else if (options.visualEffect === 'glitch_rgb') {
+      const burst = Math.sin(sec * 7.2) > 0.72;
+      if (burst) {
+        scale *= 1.03;
+        fxOffsetX += Math.sin(sec * 47) * (W * 0.012);
+      }
     }
+
     const dw = W * scale;
     const dh = H * scale;
-    ctx.drawImage(frameCanvas, (W - dw) / 2 + offsetX, (H - dh) / 2, dw, dh);
+    if (tiltRad !== 0) {
+      ctx.translate(W / 2 + fxOffsetX, H / 2 + fxOffsetY);
+      ctx.rotate(tiltRad);
+      ctx.drawImage(frameCanvas, -dw / 2, -dh / 2, dw, dh);
+    } else {
+      ctx.drawImage(frameCanvas, (W - dw) / 2 + fxOffsetX, (H - dh) / 2 + fxOffsetY, dw, dh);
+    }
 
-    if (cachedVignette) {
-      ctx.drawImage(cachedVignette, 0, 0, W, H);
+    if (options.visualEffect === 'vhs_retro') {
+      ctx.fillStyle = 'rgba(255, 168, 76, 0.08)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
+      const step = Math.max(4, Math.round(H / 160));
+      for (let sy = 0; sy < H; sy += step * 2) {
+        ctx.fillRect(0, sy, W, Math.max(1, Math.floor(step * 0.5)));
+      }
+      const scanY = ((sec * 190) % (H + 90)) - 45;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.fillRect(0, scanY, W, Math.max(6, H * 0.015));
+    } else if (options.visualEffect === 'glitch_rgb') {
+      const burst = Math.sin(sec * 7.2) > 0.72;
+      if (burst) {
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.16)';
+        ctx.fillRect(0, H * 0.22, W, H * 0.06);
+        ctx.fillStyle = 'rgba(255, 59, 107, 0.18)';
+        ctx.fillRect(0, H * 0.58, W, H * 0.045);
+      }
+    }
+
+    if (cachedVignette || options.visualEffect === 'vhs_retro') {
+      const v = cachedVignette || getVignetteSurface(W, H);
+      if (v) ctx.drawImage(v, 0, 0, W, H);
     }
     ctx.restore();
   };
@@ -269,6 +317,7 @@ export function renderTimelineFrame(
   if (options.transitionStyle !== 'none' && localT < transDur && segIdx > 0) {
     const prev = timeline[segIdx - 1];
     const p = localT / transDur;
+    const ease = 1 - Math.pow(1 - p, 3);
     if (options.transitionStyle === 'fade') {
       drawFrameWithFx(prev.frame.canvas, 1, 1 - p);
       drawFrameWithFx(seg.frame.canvas, norm, p);
@@ -276,8 +325,51 @@ export function renderTimelineFrame(
       drawFrameWithFx(prev.frame.canvas, 1, 1 - p, 0, 1 + p * 0.14);
       drawFrameWithFx(seg.frame.canvas, norm, p, 0, 0.94 + p * 0.06);
     } else if (options.transitionStyle === 'slide') {
-      drawFrameWithFx(prev.frame.canvas, 1, 1, -W * p);
-      drawFrameWithFx(seg.frame.canvas, norm, 1, W * (1 - p));
+      drawFrameWithFx(prev.frame.canvas, 1, 1, -W * ease);
+      drawFrameWithFx(seg.frame.canvas, norm, 1, W * (1 - ease));
+    } else if (options.transitionStyle === 'wipe_up') {
+      drawFrameWithFx(prev.frame.canvas, 1, 1, 0, 1, -H * 0.12 * ease);
+      const topY = Math.round(H * (1 - ease));
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, topY, W, H - topY);
+      ctx.clip();
+      drawFrameWithFx(seg.frame.canvas, norm, 1);
+      ctx.restore();
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+      ctx.fillRect(0, topY - 2, W, 3);
+    } else if (options.transitionStyle === 'whip_blur') {
+      const whipEase = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+      drawFrameWithFx(prev.frame.canvas, 1, 0.35, -W * whipEase - W * 0.06);
+      drawFrameWithFx(prev.frame.canvas, 1, 1, -W * whipEase);
+      drawFrameWithFx(seg.frame.canvas, norm, 0.35, W * (1 - whipEase) + W * 0.06);
+      drawFrameWithFx(seg.frame.canvas, norm, 1, W * (1 - whipEase));
+    } else if (options.transitionStyle === 'flash_white') {
+      if (p < 0.5) {
+        drawFrameWithFx(prev.frame.canvas, 1, 1);
+      } else {
+        const settle = (p - 0.5) / 0.5;
+        drawFrameWithFx(seg.frame.canvas, norm, 1, 0, 1.07 - settle * 0.07);
+      }
+      const flashAlpha = (1 - Math.abs(p * 2 - 1)) * 0.92;
+      ctx.fillStyle = `rgba(255, 255, 255, ${flashAlpha.toFixed(3)})`;
+      ctx.fillRect(0, 0, W, H);
+    } else if (options.transitionStyle === 'iris_circle') {
+      drawFrameWithFx(prev.frame.canvas, 1, 1);
+      const radius = Math.hypot(W, H) * 0.55 * ease;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(W / 2, H / 2, Math.max(1, radius), 0, Math.PI * 2);
+      ctx.clip();
+      drawFrameWithFx(seg.frame.canvas, norm, 1);
+      ctx.restore();
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(W / 2, H / 2, Math.max(1, radius), 0, Math.PI * 2);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+      ctx.stroke();
+      ctx.restore();
     }
   } else {
     drawFrameWithFx(seg.frame.canvas, norm, 1);

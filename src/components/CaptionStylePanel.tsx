@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Film } from 'lucide-react';
 import { useTranslation } from '../i18n/LanguageContext';
 import type { CaptionSettings, SubtitlePosition, SubtitleStyleId } from '../types/clipper';
 import {
@@ -12,6 +12,11 @@ import {
   findFontEntry,
   type FontCategory,
 } from '../utils/fontCatalog';
+import {
+  SubtitleAllStylesGallery,
+  SubtitlePresetPreviewGrid,
+  SubtitleStyleLiveCanvas,
+} from './EffectPreviewCards';
 
 interface CaptionStylePanelProps {
   settings: CaptionSettings;
@@ -28,6 +33,7 @@ export function CaptionStylePanel({
 }: CaptionStylePanelProps) {
   const { t } = useTranslation();
   const [fontCategory, setFontCategory] = useState<FontCategory>('all');
+  const [showAllStyleVideos, setShowAllStyleVideos] = useState(false);
   const onFontReadyRef = useRef(onFontReady);
   onFontReadyRef.current = onFontReady;
 
@@ -61,7 +67,7 @@ export function CaptionStylePanel({
 
   return (
     <div className={compact ? 'space-y-3.5 pt-2 border-t border-[#1e3159]' : 'space-y-5'}>
-      {/* Quick Presets */}
+      {/* Quick Presets with Animated Video Previews */}
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs text-[#b8c7e3] font-medium">
@@ -71,34 +77,11 @@ export function CaptionStylePanel({
             {t('style.catalogCount', { fonts: FONT_CATALOG.length, styles: STYLE_OPTIONS.length })}
           </span>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {CAPTION_PRESETS.map((preset) => {
-            const isMatch =
-              settings.style === preset.patch.style &&
-              settings.fontFamily === preset.patch.fontFamily;
-            return (
-              <button
-                key={preset.id}
-                type="button"
-                onClick={() => onChange(preset.patch)}
-                className={`text-left px-3 py-2 rounded-lg border transition-colors cursor-pointer ${
-                  isMatch
-                    ? 'bg-[#16264d] border-[#c7ff55]'
-                    : 'bg-[#0c1733] border-[#1e3159] hover:border-[#2a4173]'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-1.5">
-                  <span className="text-xs font-bold text-white truncate">{preset.name}</span>
-                  <span
-                    className="w-2.5 h-2.5 rounded-sm shrink-0"
-                    style={{ backgroundColor: preset.patch.highlightColor || '#c7ff55' }}
-                  />
-                </div>
-                <div className="text-[11px] text-[#93a7cc] truncate mt-0.5">{preset.subtitle}</div>
-              </button>
-            );
-          })}
-        </div>
+        <SubtitlePresetPreviewGrid
+          presets={CAPTION_PRESETS}
+          settings={settings}
+          onSelect={(patch) => onChange(patch)}
+        />
       </div>
 
       {/* Category Tabs for Font Library */}
@@ -150,12 +133,12 @@ export function CaptionStylePanel({
             </select>
           </div>
 
-          <div>
+          <div className="flex items-center gap-2">
             <select
               aria-label={t('studio.tabStyle')}
               value={settings.style}
               onChange={(e) => onChange({ style: e.target.value as SubtitleStyleId })}
-              className="w-full bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-3 py-2 text-xs"
+              className="flex-1 min-w-0 bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-3 py-2 text-xs"
             >
               {STYLE_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -163,24 +146,43 @@ export function CaptionStylePanel({
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              onClick={() => setShowAllStyleVideos((prev) => !prev)}
+              className={`px-2.5 py-2 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1 shrink-0 whitespace-nowrap cursor-pointer transition-colors ${
+                showAllStyleVideos
+                  ? 'bg-[#16264d] border-[#c7ff55] text-[#c7ff55]'
+                  : 'bg-[#0c1733] hover:bg-[#16264d] border-[#2a4173] text-[#e4ecfa]'
+              }`}
+              title="Preview Video Semua Gaya Subtitle"
+            >
+              <Film className="w-3.5 h-3.5 text-[#ff8224]" />
+              <span>Preview ({STYLE_OPTIONS.length})</span>
+              {showAllStyleVideos ? (
+                <ChevronUp className="w-3 h-3" />
+              ) : (
+                <ChevronDown className="w-3 h-3" />
+              )}
+            </button>
           </div>
         </div>
 
-        <div className="bg-[#070e20] border border-[#1e3159] rounded-lg px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2">
-          <div
-            className="text-base text-white tracking-wide truncate max-w-full"
-            style={{
-              fontFamily: settings.fontFamily,
-              fontWeight: activeFont?.singleDisplayWeight ? 400 : Number(settings.fontWeight || 800),
-              fontStyle: settings.italic && !activeFont?.singleDisplayWeight ? 'italic' : 'normal',
-              textTransform: settings.caps ? 'uppercase' : 'none',
-            }}
-          >
-            {t('style.samplePreviewBefore')}{' '}
-            <span style={{ color: settings.highlightColor }}>{t('style.samplePreviewHighlight')}</span>
+        <SubtitleStyleLiveCanvas
+          settings={settings}
+          sampleLabel={`${activeStyleMeta.label} · ${activeStyleMeta.desc}`}
+        />
+
+        {showAllStyleVideos && (
+          <div className="pt-1 space-y-1.5">
+            <div className="text-[11px] text-[#93a7cc]">
+              Klik contoh video gaya subtitle di bawah untuk langsung menerapkannya:
+            </div>
+            <SubtitleAllStylesGallery
+              settings={settings}
+              onSelectStyle={(style) => onChange({ style })}
+            />
           </div>
-          <span className="text-[11px] text-[#93a7cc]">{activeStyleMeta.desc}</span>
-        </div>
+        )}
       </div>
 
       {/* Size, Position, Weight */}

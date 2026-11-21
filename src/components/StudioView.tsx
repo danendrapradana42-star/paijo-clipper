@@ -1,11 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Archive,
+  Check,
+  ChevronDown,
+  ChevronUp,
   Download,
   Pause,
   Play,
+  RefreshCw,
   RotateCcw,
   Scissors,
+  Settings2,
   Sparkles,
   Square,
   Subtitles,
@@ -38,6 +43,13 @@ import { ensureFontLoaded } from '../utils/fontCatalog';
 import { formatClock, formatTimeDecimal } from '../utils/subtitles';
 import { supportedExportMime, syncPreviewAudio } from '../utils/videoExporter';
 import { downloadProjectZip } from '../utils/zipExporter';
+import {
+  detectLocalAiRuntime,
+  isDesktopRuntime,
+  loadLocalBinaryPrefs,
+  saveLocalBinaryPrefs,
+  type LocalAiRuntimeReport,
+} from '../utils/localAiEngine';
 import { CaptionStylePanel } from './CaptionStylePanel';
 import { TrimBar } from './TrimBar';
 
@@ -180,6 +192,17 @@ export function StudioView(props: StudioViewProps) {
   const [previewMuted, setPreviewMuted] = useState(false);
   const [zipExporting, setZipExporting] = useState(false);
 
+  const isRunningDesktop = isDesktopRuntime();
+  const initialBinaryPrefs = loadLocalBinaryPrefs();
+  const [showBinarySettings, setShowBinarySettings] = useState(
+    Boolean(initialBinaryPrefs.ffmpegPath || initialBinaryPrefs.whisperPath)
+  );
+  const [ffmpegPathInput, setFfmpegPathInput] = useState(initialBinaryPrefs.ffmpegPath);
+  const [whisperPathInput, setWhisperPathInput] = useState(initialBinaryPrefs.whisperPath);
+  const [binaryRuntime, setBinaryRuntime] = useState<LocalAiRuntimeReport | null>(null);
+  const [verifyingBinaries, setVerifyingBinaries] = useState(false);
+  const [binarySettingsNotice, setBinarySettingsNotice] = useState('');
+
   const seekRafRef = useRef<number>(0);
   const pendingSeekTimeRef = useRef<number | null>(null);
   const transcriptDebounceRef = useRef<number>(0);
@@ -187,6 +210,84 @@ export function StudioView(props: StudioViewProps) {
   useEffect(() => {
     setDraftTranscript(transcriptEditorText);
   }, [transcriptEditorText]);
+
+  useEffect(() => {
+    if (!isRunningDesktop) return;
+    let active = true;
+    detectLocalAiRuntime()
+      .then((report) => {
+        if (active) setBinaryRuntime(report);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [isRunningDesktop]);
+
+  const handleSaveBinaryPrefs = async () => {
+    const saved = saveLocalBinaryPrefs({
+      ffmpegPath: ffmpegPathInput,
+      whisperPath: whisperPathInput,
+    });
+    setFfmpegPathInput(saved.ffmpegPath);
+    setWhisperPathInput(saved.whisperPath);
+
+    if (!isRunningDesktop) {
+      setBinarySettingsNotice(
+        'Path binary tersimpan di preferensi browser (aktif saat dijalankan di aplikasi Desktop).'
+      );
+      return;
+    }
+
+    setVerifyingBinaries(true);
+    setBinarySettingsNotice('Memverifikasi path FFmpeg & Whisper di sistem lokal…');
+    try {
+      const report = await detectLocalAiRuntime({
+        forceRefresh: true,
+        ffmpegPath: saved.ffmpegPath,
+        whisperPath: saved.whisperPath,
+      });
+      setBinaryRuntime(report);
+      const ffOk = report.binaries.ffmpeg.available;
+      const whOk = report.binaries.whisper.available;
+      setBinarySettingsNotice(
+        `Preferensi tersimpan · FFmpeg: ${
+          ffOk ? report.binaries.ffmpeg.command || 'Siap' : 'Tidak ditemukan'
+        } · Whisper: ${
+          whOk ? report.binaries.whisper.command || 'Siap' : 'Tidak ditemukan'
+        }`
+      );
+    } catch (err) {
+      setBinarySettingsNotice(
+        `Path tersimpan, gagal verifikasi: ${err instanceof Error ? err.message : String(err)}`
+      );
+    } finally {
+      setVerifyingBinaries(false);
+    }
+  };
+
+  const handleResetBinaryPrefs = async () => {
+    saveLocalBinaryPrefs({ ffmpegPath: '', whisperPath: '' });
+    setFfmpegPathInput('');
+    setWhisperPathInput('');
+    if (!isRunningDesktop) {
+      setBinarySettingsNotice('Path manual dihapus dari preferensi lokal.');
+      return;
+    }
+    setVerifyingBinaries(true);
+    setBinarySettingsNotice('Menjalankan deteksi otomatis FFmpeg & Whisper…');
+    try {
+      const report = await detectLocalAiRuntime({ forceRefresh: true, ffmpegPath: '', whisperPath: '' });
+      setBinaryRuntime(report);
+      setBinarySettingsNotice('Deteksi otomatis selesai dan preferensi manual dikosongkan.');
+    } catch (err) {
+      setBinarySettingsNotice(
+        `Gagal deteksi otomatis: ${err instanceof Error ? err.message : String(err)}`
+      );
+    } finally {
+      setVerifyingBinaries(false);
+    }
+  };
 
   useEffect(() => {
     return () => {
@@ -1379,6 +1480,152 @@ export function StudioView(props: StudioViewProps) {
             )}
           </div>
         )}
+
+        {/* Studio Local Runtime & Binary Paths Settings */}
+        <section className="bg-[#101d3d] border border-[#1e3159] rounded-xl overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setShowBinarySettings((v) => !v)}
+            className="w-full px-5 py-3.5 flex flex-wrap items-center justify-between gap-2 text-left hover:bg-[#142347] transition-colors cursor-pointer"
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <Settings2 className="w-4 h-4 text-[#c7ff55] shrink-0" />
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-white">
+                  Pengaturan Path Binary Lokal (FFmpeg &amp; Whisper)
+                </div>
+                <div className="text-[11px] text-[#93a7cc] truncate">
+                  {isRunningDesktop
+                    ? 'Atur path manual jika deteksi otomatis gagal — tersimpan di preferensi lokal.'
+                    : 'Preferensi path desktop (aktif saat membuka proyek di aplikasi Desktop).'}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {isRunningDesktop && binaryRuntime && (
+                <div className="hidden sm:flex items-center gap-1.5 text-[10.5px]">
+                  <span
+                    className={`px-2 py-0.5 rounded border ${
+                      binaryRuntime.binaries.ffmpeg.available
+                        ? 'border-emerald-700/60 bg-emerald-950/40 text-emerald-300'
+                        : 'border-amber-700/60 bg-amber-950/40 text-amber-200'
+                    }`}
+                  >
+                    FFmpeg: {binaryRuntime.binaries.ffmpeg.available ? 'Siap' : 'Belum terdeteksi'}
+                  </span>
+                  <span
+                    className={`px-2 py-0.5 rounded border ${
+                      binaryRuntime.binaries.whisper.available
+                        ? 'border-emerald-700/60 bg-emerald-950/40 text-emerald-300'
+                        : 'border-[#2a4173] bg-[#070e20] text-[#93a7cc]'
+                    }`}
+                  >
+                    Whisper: {binaryRuntime.binaries.whisper.available ? 'Siap' : 'Opsional'}
+                  </span>
+                </div>
+              )}
+              {showBinarySettings ? (
+                <ChevronUp className="w-4 h-4 text-[#dce6f7]" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-[#dce6f7]" />
+              )}
+            </div>
+          </button>
+
+          {showBinarySettings && (
+            <div className="px-5 pb-4 pt-3 border-t border-[#1e3159] space-y-3 bg-[#0c1733]/60">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <label
+                      htmlFor="studio-ffmpeg-path"
+                      className="text-[11.5px] font-semibold text-[#dce6f7]"
+                    >
+                      Path Binary FFmpeg
+                    </label>
+                    {isRunningDesktop && binaryRuntime?.binaries.ffmpeg.available && (
+                      <span className="text-[10.5px] font-mono text-emerald-300 truncate max-w-[160px]">
+                        {binaryRuntime.binaries.ffmpeg.version || 'Terdeteksi'}
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    id="studio-ffmpeg-path"
+                    type="text"
+                    value={ffmpegPathInput}
+                    onChange={(e) => setFfmpegPathInput(e.target.value)}
+                    placeholder="Contoh: C:\ffmpeg\bin\ffmpeg.exe atau /usr/bin/ffmpeg"
+                    className="w-full bg-[#070e20] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-2.5 py-2 font-mono text-xs focus:outline-none focus:border-[#ff6b00]"
+                  />
+                  {isRunningDesktop && binaryRuntime?.binaries.ffmpeg.command && (
+                    <div className="text-[10.5px] font-mono text-[#93a7cc] truncate">
+                      Aktif: {binaryRuntime.binaries.ffmpeg.command}
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <label
+                      htmlFor="studio-whisper-path"
+                      className="text-[11.5px] font-semibold text-[#dce6f7]"
+                    >
+                      Path Binary Whisper
+                    </label>
+                    {isRunningDesktop && binaryRuntime?.binaries.whisper.available && (
+                      <span className="text-[10.5px] font-mono text-emerald-300 truncate max-w-[160px]">
+                        {binaryRuntime.binaries.whisper.binaryName || 'Terdeteksi'}
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    id="studio-whisper-path"
+                    type="text"
+                    value={whisperPathInput}
+                    onChange={(e) => setWhisperPathInput(e.target.value)}
+                    placeholder="Contoh: C:\whisper\whisper-cli.exe atau /usr/local/bin/whisper-cli"
+                    className="w-full bg-[#070e20] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-2.5 py-2 font-mono text-xs focus:outline-none focus:border-[#ff6b00]"
+                  />
+                  {isRunningDesktop && binaryRuntime?.binaries.whisper.command && (
+                    <div className="text-[10.5px] font-mono text-[#93a7cc] truncate">
+                      Aktif: {binaryRuntime.binaries.whisper.command}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={verifyingBinaries}
+                    onClick={handleSaveBinaryPrefs}
+                    className="px-3.5 py-1.5 rounded-lg bg-[#ff6b00] hover:bg-[#ff8224] disabled:opacity-50 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    {verifyingBinaries ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Check className="w-3.5 h-3.5" />
+                    )}
+                    {isRunningDesktop ? 'Simpan & Verifikasi Path' : 'Simpan Preferensi Path'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={verifyingBinaries}
+                    onClick={handleResetBinaryPrefs}
+                    className="px-3 py-1.5 rounded-lg bg-[#16264d] hover:bg-[#1e3363] disabled:opacity-50 border border-[#2a4173] text-xs font-semibold text-[#dce6f7] inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    Reset / Deteksi Otomatis
+                  </button>
+                </div>
+                {binarySettingsNotice && (
+                  <span className="text-[11px] text-[#c7ff55]">{binarySettingsNotice}</span>
+                )}
+              </div>
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );

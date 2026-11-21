@@ -36,7 +36,12 @@ export type SubtitleStyleId =
   | 'karaoke_bar'
   | 'classic'
   | 'clean'
-  | 'neon';
+  | 'neon'
+  | 'glitch_rgb'
+  | 'comic_boom'
+  | 'fire_glow'
+  | 'kinetic_underline'
+  | 'editorial_frame';
 
 export type SubtitlePosition = 'bottom' | 'lower' | 'center' | 'top';
 
@@ -170,6 +175,22 @@ export interface AiVoiceTrack {
   source: 'tts' | 'microphone';
 }
 
-export type AiVisualEffect = 'kenburns' | 'cinematic' | 'pulse' | 'none';
-export type AiTransitionStyle = 'fade' | 'zoom' | 'slide' | 'none';
+export type AiVisualEffect =
+  | 'kenburns'
+  | 'cinematic'
+  | 'pulse'
+  | 'pan_sweep'
+  | 'handheld'
+  | 'vhs_retro'
+  | 'glitch_rgb'
+  | 'none';
+export type AiTransitionStyle =
+  | 'fade'
+  | 'zoom'
+  | 'slide'
+  | 'wipe_up'
+  | 'whip_blur'
+  | 'flash_white'
+  | 'iris_circle'
+  | 'none';
 export type AiTheme = 'cinematic' | 'editorial' | 'tech' | 'minimal';

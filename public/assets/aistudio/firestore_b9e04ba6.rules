@@ -1,0 +1,125 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isVerifiedAdminEmail() {
+      return isSignedIn() && request.auth.token.email == 'danendrapradana44@gmail.com';
+    }
+
+    function isAdmin() {
+      return isVerifiedAdminEmail()
+        || (isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    function isValidAppRelease(data) {
+      return data.keys().hasAll([
+          'ownerId',
+          'version',
+          'baseVersion',
+          'updateType',
+          'status',
+          'title',
+          'releaseNotes',
+          'changes',
+          'packageUrl',
+          'buildTarget',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId',
+          'version',
+          'baseVersion',
+          'updateType',
+          'status',
+          'title',
+          'releaseNotes',
+          'changes',
+          'packageUrl',
+          'buildTarget',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.ownerId is string && isValidId(data.ownerId) && data.ownerId == request.auth.uid
+        && data.version is string && data.version.size() >= 5 && data.version.size() <= 24 && data.version.matches('^[0-9]+\\.[0-9]+\\.[0-9]+$')
+        && data.baseVersion is string && data.baseVersion.size() >= 5 && data.baseVersion.size() <= 24 && data.baseVersion.matches('^[0-9]+\\.[0-9]+\\.[0-9]+$')
+        && data.updateType is string && data.updateType in ['minor', 'major']
+        && data.status is string && data.status in ['developing', 'published']
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 160
+        && data.releaseNotes is string && data.releaseNotes.size() >= 1 && data.releaseNotes.size() <= 2000
+        && data.changes is list && data.changes.size() <= 20 && (data.changes.size() == 0 || (data.changes[0] is string && data.changes[0].size() <= 240))
+        && data.packageUrl is string && data.packageUrl.size() <= 500
+        && data.buildTarget is string && data.buildTarget.size() >= 1 && data.buildTarget.size() <= 40
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    match /appReleases/{releaseId} {
+      // Published releases are readable for app update checks; developing builds are strictly admin-only.
+      allow get: if isValidId(releaseId) && ((resource != null && existing().status == 'published') || isAdmin());
+      allow list: if existing().status == 'published' || isVerifiedAdminEmail();
+
+      allow create: if isAdmin()
+        && isValidId(releaseId)
+        && isValidAppRelease(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isAdmin()
+        && isValidId(releaseId)
+        && isValidAppRelease(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action 1: Edit release fields (draft or admin correction)
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'version',
+            'baseVersion',
+            'updateType',
+            'status',
+            'title',
+            'releaseNotes',
+            'changes',
+            'packageUrl',
+            'buildTarget',
+            'updatedAt'
+          ])
+          ||
+          // Action 2: Promote developing build to published
+          (
+            existing().status == 'developing'
+            && incoming().status == 'published'
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+          )
+        );
+
+      allow delete: if isAdmin() && isValidId(releaseId);
+    }
+
+    match /admins/{adminId} {
+      allow get: if isSignedIn() && isValidId(adminId) && request.auth.uid == adminId;
+      allow list, create, update, delete: if false;
+    }
+  }
+}

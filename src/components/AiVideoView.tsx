@@ -3,11 +3,13 @@ import {
   BookOpen,
   ChevronDown,
   ChevronUp,
+  Cpu,
   Download,
   ImagePlus,
   Mic,
   Pause,
   Play,
+  RefreshCw,
   Sparkles,
   Square,
   Volume2,
@@ -34,7 +36,22 @@ import {
 } from '../utils/aiPipeline';
 import { buildSrtFromScenes, formatClock } from '../utils/subtitles';
 import { readApiJson } from '../utils/safeApiJson';
+import {
+  clearLocalAiRuntimeCache,
+  detectLocalAiRuntime,
+  isDesktopRuntime,
+  resolveVideoAiExecution,
+  type LocalAiRuntimeReport,
+  type ScriptEngineId,
+  type VoiceEngineId,
+  type VoiceStudioProfileItem,
+} from '../utils/localAiEngine';
 import { CaptionStylePanel } from './CaptionStylePanel';
+import {
+  TransitionPreviewGrid,
+  VisualEffectPreviewGrid,
+  VoiceSampleSpinner,
+} from './EffectPreviewCards';
 
 interface AiVideoViewProps {
   captionSettings: CaptionSettings;
@@ -43,36 +60,125 @@ interface AiVideoViewProps {
   onSendToStudio: (file: File, srtText: string, title: string) => void;
 }
 
-const VOICE_PRESETS: Array<{ id: string; label: string; shortName: string; previewUrl?: string }> = [
+const VOICE_PRESETS: Array<{
+  id: string;
+  label: string;
+  shortName: string;
+  roleDesc: string;
+  previewUrl?: string;
+}> = [
   {
     id: 'ricky',
     shortName: 'Ricky',
+    roleDesc: 'Soft & Authentic (ID)',
     label: 'Ricky · Soft & Authentic (Indonesian)',
     previewUrl: '/assets/aistudio/voice_preview_ricky_-_soft___authentic_indonesian_e1eddf78.mp3',
   },
   {
     id: 'sikedewo',
     shortName: 'Sikedewo',
+    roleDesc: 'Tender, Calm & Clear (ID)',
     label: 'Sikedewo · Tender, Calm & Clear (Indonesian)',
     previewUrl: '/assets/aistudio/voice_preview_sikedewo_-_tender__calm_and_clear_67f5636e.mp3',
   },
   {
+    id: 'bima',
+    shortName: 'Bima',
+    roleDesc: 'Dokumenter Tegas (ID)',
+    label: 'Bima · Dokumenter Tegas (Indonesian)',
+    previewUrl: '/assets/aistudio/voice_preview_bima_dokumenter.mp3',
+  },
+  {
+    id: 'sari',
+    shortName: 'Sari',
+    roleDesc: 'Ceria & Persuasif (ID)',
+    label: 'Sari · Ceria & Persuasif (Indonesian)',
+    previewUrl: '/assets/aistudio/voice_preview_sari_ceria.mp3',
+  },
+  {
+    id: 'dimas',
+    shortName: 'Dimas',
+    roleDesc: 'Berita & Hook Cepat (ID)',
+    label: 'Dimas · Berita & Hook Cepat (Indonesian)',
+    previewUrl: '/assets/aistudio/voice_preview_dimas_berita.mp3',
+  },
+  {
+    id: 'maya',
+    shortName: 'Maya',
+    roleDesc: 'Cerita & Sinematik (ID)',
+    label: 'Maya · Cerita & Sinematik (Indonesian)',
+    previewUrl: '/assets/aistudio/voice_preview_maya_sinematik.mp3',
+  },
+  {
+    id: 'arjun',
+    shortName: 'Arjun',
+    roleDesc: 'Santai & Podcast (ID)',
+    label: 'Arjun · Santai & Podcast (Indonesian)',
+    previewUrl: '/assets/aistudio/voice_preview_arjun_podcast.mp3',
+  },
+  {
+    id: 'nadia',
+    shortName: 'Nadia',
+    roleDesc: 'Edukasi & Jernih (ID)',
+    label: 'Nadia · Edukasi & Jernih (Indonesian)',
+    previewUrl: '/assets/aistudio/voice_preview_nadia_edukasi.mp3',
+  },
+  {
     id: 'todd',
     shortName: 'Todd',
+    roleDesc: 'Clear & Educational',
     label: 'Todd · Clear, Engaging & Educational',
     previewUrl: '/assets/aistudio/voice_preview_todd_-_clear__engaging_and_educational_1be6d861.mp3',
   },
   {
     id: 'nichalia',
     shortName: 'Nichalia Schwartz',
+    roleDesc: 'Bright & Friendly',
     label: 'Nichalia Schwartz · Bright & Friendly',
     previewUrl: '/assets/aistudio/voice_preview_nichalia_schwartz_-_bright_and_friendly_0cd738b6.mp3',
   },
-  { id: 'Kore', shortName: 'Kore', label: 'Kore · Natural & Clear' },
-  { id: 'Puck', shortName: 'Puck', label: 'Puck · Bright & Energetic' },
-  { id: 'Charon', shortName: 'Charon', label: 'Charon · Deep & Authoritative' },
-  { id: 'Fenrir', shortName: 'Fenrir', label: 'Fenrir · Assertive & Crisp' },
-  { id: 'Zephyr', shortName: 'Zephyr', label: 'Zephyr · Calm & Warm' },
+  {
+    id: 'Kore',
+    shortName: 'Kore',
+    roleDesc: 'Natural & Clear',
+    label: 'Kore · Natural & Clear',
+  },
+  {
+    id: 'Puck',
+    shortName: 'Puck',
+    roleDesc: 'Bright & Energetic',
+    label: 'Puck · Bright & Energetic',
+  },
+  {
+    id: 'Charon',
+    shortName: 'Charon',
+    roleDesc: 'Deep & Authoritative',
+    label: 'Charon · Deep & Authoritative',
+  },
+  {
+    id: 'Fenrir',
+    shortName: 'Fenrir',
+    roleDesc: 'Assertive & Crisp',
+    label: 'Fenrir · Assertive & Crisp',
+  },
+  {
+    id: 'Zephyr',
+    shortName: 'Zephyr',
+    roleDesc: 'Calm & Warm',
+    label: 'Zephyr · Calm & Warm',
+  },
+  {
+    id: 'Aoede',
+    shortName: 'Aoede',
+    roleDesc: 'Expressive & Lyrical',
+    label: 'Aoede · Expressive & Lyrical',
+  },
+  {
+    id: 'Orus',
+    shortName: 'Orus',
+    roleDesc: 'Firm & Confident',
+    label: 'Orus · Firm & Confident',
+  },
 ];
 
 const DURATION_OPTIONS = [
@@ -173,12 +279,76 @@ export function AiVideoView({
     DURATION_OPTIONS.find((opt) => opt.minutes === durationMinutes) || DURATION_OPTIONS[0];
   const sceneCount = selectedDuration.sceneCount;
 
+  const isRunningDesktop = isDesktopRuntime();
+
   const [voiceName, setVoiceName] = useState('ricky');
   const [voiceStyle, setVoiceStyle] = useState('Clear, engaging short-form video narrator');
   const [playingSampleId, setPlayingSampleId] = useState<string | null>(null);
+  const [loadingSampleId, setLoadingSampleId] = useState<string | null>(null);
+  const voiceSampleCacheRef = useRef<Map<string, string>>(new Map());
+
+  const [aiProvider, setAiProvider] = useState<ScriptEngineId>(
+    isRunningDesktop ? 'local_auto' : 'gemini'
+  );
+  const [voiceProvider, setVoiceProvider] = useState<VoiceEngineId>(
+    isRunningDesktop ? 'local_auto' : 'gemini'
+  );
+  const [localModel, setLocalModel] = useState('');
+  const [localEndpoint, setLocalEndpoint] = useState('');
+  const [localStatus, setLocalStatus] = useState<LocalAiRuntimeReport | null>(null);
+  const [checkingLocal, setCheckingLocal] = useState(false);
+  const [webApiReady, setWebApiReady] = useState<boolean | null>(null);
+  const [vsProfiles, setVsProfiles] = useState<VoiceStudioProfileItem[]>([]);
+  const [vsImportConsent, setVsImportConsent] = useState(false);
+  const [vsImporting, setVsImporting] = useState(false);
+
+  const localEndpointRef = useRef(localEndpoint);
+  localEndpointRef.current = localEndpoint;
+
+  const probeLocalEngines = useCallback(
+    async (endpointOverride?: string, forceRefresh = false) => {
+      setCheckingLocal(true);
+      try {
+        const report = await detectLocalAiRuntime({
+          endpoint: (endpointOverride ?? localEndpointRef.current).trim() || undefined,
+          forceRefresh,
+        });
+        setWebApiReady(Boolean(report.cloudGemini?.available));
+        if (report.isDesktop) {
+          setLocalStatus(report);
+          setVsProfiles(report.voiceStudioProfiles);
+        }
+      } catch {
+        // Non-fatal
+      } finally {
+        setCheckingLocal(false);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    void probeLocalEngines();
+  }, [probeLocalEngines]);
+
+  const allVoiceOptions = useMemo(() => {
+    const base = VOICE_PRESETS.map((vp) => ({ ...vp, isVoiceStudioProfile: false }));
+    if (!isRunningDesktop || !vsProfiles.length) return base;
+    const extras = vsProfiles
+      .filter((p) => !VOICE_PRESETS.some((vp) => vp.id === p.id))
+      .map((p) => ({
+        id: p.id,
+        shortName: p.name,
+        roleDesc: 'Profil VoiceStudio Lokal',
+        label: `VoiceStudio · ${p.name}`,
+        previewUrl: undefined,
+        isVoiceStudioProfile: true,
+      }));
+    return [...base, ...extras];
+  }, [isRunningDesktop, vsProfiles]);
 
   const selectedVoicePreset =
-    VOICE_PRESETS.find((vp) => vp.id === voiceName) || VOICE_PRESETS[0];
+    allVoiceOptions.find((vp) => vp.id === voiceName) || allVoiceOptions[0];
 
   const [visualEffect, setVisualEffect] = useState<AiVisualEffect>('kenburns');
   const [transitionStyle, setTransitionStyle] = useState<AiTransitionStyle>('fade');
@@ -409,19 +579,19 @@ export function AiVideoView({
       voiceSampleAudioRef.current.currentTime = 0;
       voiceSampleAudioRef.current = null;
     }
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {}
+    }
     setPlayingSampleId(null);
   };
 
-  const handleToggleVoiceSample = () => {
-    if (!selectedVoicePreset.previewUrl) return;
-    if (playingSampleId === selectedVoicePreset.id && voiceSampleAudioRef.current) {
-      stopVoiceSample();
-      return;
-    }
+  const playAudioSource = (id: string, srcUrl: string) => {
     stopVoiceSample();
-    const audio = new Audio(selectedVoicePreset.previewUrl);
+    const audio = new Audio(srcUrl);
     voiceSampleAudioRef.current = audio;
-    setPlayingSampleId(selectedVoicePreset.id);
+    setPlayingSampleId(id);
     audio.onended = () => {
       if (voiceSampleAudioRef.current === audio) {
         voiceSampleAudioRef.current = null;
@@ -439,6 +609,84 @@ export function AiVideoView({
     });
   };
 
+  const handleToggleVoiceSample = async (targetVoiceId?: string) => {
+    const targetId = targetVoiceId || selectedVoicePreset.id;
+    const targetOption =
+      allVoiceOptions.find((vp) => vp.id === targetId) || selectedVoicePreset;
+
+    if (playingSampleId === targetId) {
+      stopVoiceSample();
+      return;
+    }
+    if (loadingSampleId === targetId) return;
+
+    stopVoiceSample();
+
+    if (targetOption.previewUrl) {
+      playAudioSource(targetId, targetOption.previewUrl);
+      return;
+    }
+
+    const route = resolveVideoAiExecution({
+      isRunningDesktop,
+      runtime: localStatus,
+      requestedScriptEngine: aiProvider,
+      requestedVoiceEngine: voiceProvider,
+    });
+    const cacheKey = `${targetId}|${language}|${route.voiceProvider}`;
+    const cachedUrl = voiceSampleCacheRef.current.get(cacheKey);
+    if (cachedUrl) {
+      playAudioSource(targetId, cachedUrl);
+      return;
+    }
+
+    const sampleText =
+      language === 'id'
+        ? `Halo, ini adalah contoh karakter suara ${targetOption.shortName} untuk narasi video Anda.`
+        : `Hello, this is a sample of the ${targetOption.shortName} narrator voice for your video.`;
+
+    setLoadingSampleId(targetId);
+    try {
+      const res = await fetch('/api/ai-video/voice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: sampleText,
+          voiceName: targetId,
+          style: voiceStyle,
+          language,
+          clientMode: route.clientMode,
+          voiceProvider: route.voiceProvider,
+        }),
+      });
+      const data = await readApiJson<{ audioDataUrl?: string }>(
+        res,
+        `Gagal memuat sampel suara ${targetOption.shortName}.`
+      );
+      if (!data.audioDataUrl) {
+        throw new Error(`Sampel suara ${targetOption.shortName} kosong.`);
+      }
+      voiceSampleCacheRef.current.set(cacheKey, data.audioDataUrl);
+      playAudioSource(targetId, data.audioDataUrl);
+    } catch (err) {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        try {
+          const utter = new SpeechSynthesisUtterance(sampleText);
+          utter.lang = language === 'id' ? 'id-ID' : 'en-US';
+          utter.pitch = targetId === 'Charon' || targetId === 'Orus' ? 0.85 : targetId === 'Aoede' ? 1.12 : 1;
+          utter.onend = () => setPlayingSampleId((prev) => (prev === targetId ? null : prev));
+          utter.onerror = () => setPlayingSampleId((prev) => (prev === targetId ? null : prev));
+          setPlayingSampleId(targetId);
+          window.speechSynthesis.speak(utter);
+          return;
+        } catch {}
+      }
+      setStatusText(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoadingSampleId((prev) => (prev === targetId ? null : prev));
+    }
+  };
+
   const generateScript = async (): Promise<AiScene[] | null> => {
     if (!prompt.trim()) {
       setStatusText('Masukkan topik atau deskripsi video terlebih dahulu.');
@@ -446,8 +694,23 @@ export function AiVideoView({
     }
     setBusy(true);
     setProgressPct(15);
-    setProgressLabel('1/4 · Menyusun naskah & timestamp dengan Gemini');
-    setStatusText('Menghubungi agen naskah AI…');
+    const route = resolveVideoAiExecution({
+      isRunningDesktop,
+      runtime: localStatus,
+      requestedScriptEngine: aiProvider,
+      requestedVoiceEngine: voiceProvider,
+    });
+    const effectiveProvider = route.scriptProvider;
+    const engineLabel =
+      effectiveProvider === 'gemini'
+        ? 'Gemini Cloud API'
+        : effectiveProvider === 'local_ollama'
+          ? 'Ollama Lokal'
+          : effectiveProvider === 'local_openai'
+            ? 'LM Studio / OpenAI Lokal'
+            : 'AI Lokal Desktop';
+    setProgressLabel(`1/4 · Menyusun naskah & timestamp (${engineLabel})`);
+    setStatusText(`Menghubungi mesin naskah ${engineLabel}…`);
     try {
       const res = await fetch('/api/ai-video/text', {
         method: 'POST',
@@ -459,6 +722,10 @@ export function AiVideoView({
           language,
           visualTheme: theme,
           videoType,
+          clientMode: route.clientMode,
+          aiProvider: effectiveProvider,
+          localModel: isRunningDesktop ? localModel.trim() || undefined : undefined,
+          localEndpoint: isRunningDesktop ? localEndpoint.trim() || undefined : undefined,
         }),
       });
       const data = await readApiJson<{
@@ -466,6 +733,7 @@ export function AiVideoView({
         summary?: string;
         totalDurationSec?: number;
         scenes?: AiScene[];
+        engineUsed?: string;
       }>(res, 'Gagal menyusun naskah AI.');
 
       voices.forEach((v) => {
@@ -485,10 +753,10 @@ export function AiVideoView({
       setPreviewSec(0);
       setPreviewPlaying(false);
       setProgressPct(30);
-      setProgressLabel('1/4 · Naskah siap');
+      setProgressLabel(`1/4 · Naskah siap (${data.engineUsed || engineLabel})`);
       const totalDur = Number(data.totalDurationSec) || nextScenes.reduce((acc, s) => acc + (s.durationSec || 0), 0);
       setStatusText(
-        `Naskah "${data.title}" selesai (${nextScenes.length} adegan · total ${formatClock(totalDur)}). Lanjutkan ke Tahap 2.`
+        `Naskah "${data.title}" selesai via ${data.engineUsed || engineLabel} (${nextScenes.length} adegan · total ${formatClock(totalDur)}). Lanjutkan ke Tahap 2.`
       );
       return nextScenes;
     } catch (err) {
@@ -530,6 +798,12 @@ export function AiVideoView({
   };
 
   const synthesizeOneVoice = async (sc: AiScene, signal?: AbortSignal): Promise<AiVoiceTrack> => {
+    const route = resolveVideoAiExecution({
+      isRunningDesktop,
+      runtime: localStatus,
+      requestedScriptEngine: aiProvider,
+      requestedVoiceEngine: voiceProvider,
+    });
     const res = await fetch('/api/ai-video/voice', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -537,6 +811,9 @@ export function AiVideoView({
         text: sc.narration || sc.visualTitle,
         voiceName,
         style: voiceStyle,
+        language,
+        clientMode: route.clientMode,
+        voiceProvider: route.voiceProvider,
       }),
       signal,
     });
@@ -554,6 +831,38 @@ export function AiVideoView({
     return { url, durationSec, source: 'tts' };
   };
 
+  const handleImportSampleToVoiceStudio = async () => {
+    if (!isRunningDesktop || !vsImportConsent || !selectedVoicePreset.previewUrl) return;
+    setVsImporting(true);
+    setStatusText(`Mengirim sampel ${selectedVoicePreset.shortName} ke VoiceStudio lokal…`);
+    try {
+      const res = await fetch('/api/voice-studio/import-sample', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sampleId: selectedVoicePreset.id,
+          permissionConfirmed: true,
+          clientMode: 'desktop',
+        }),
+      });
+      const data = await readApiJson<{ id?: string; name?: string }>(
+        res,
+        'Gagal mengimpor sampel ke VoiceStudio.'
+      );
+      clearLocalAiRuntimeCache();
+      await probeLocalEngines(undefined, true);
+      if (data.id) {
+        setVoiceName(data.id);
+        setVoiceProvider('local_voicestudio');
+      }
+      setStatusText(`Profil "${data.name || selectedVoicePreset.shortName}" dibuat di VoiceStudio lokal.`);
+    } catch (err) {
+      setStatusText(err instanceof Error ? err.message : String(err));
+    } finally {
+      setVsImporting(false);
+    }
+  };
+
   const generateAllVoices = async (
     targetScenes = scenes
   ): Promise<{ tracks: Array<AiVoiceTrack | null>; aborted: boolean } | null> => {
@@ -562,35 +871,51 @@ export function AiVideoView({
     setBusy(true);
     const ctrl = new AbortController();
     abortControllerRef.current = ctrl;
+    const activePreset =
+      VOICE_PRESETS.find((vp) => vp.id === voiceName)?.shortName || voiceName;
     setProgressPct(60);
-    setProgressLabel(`3/4 · Membuat narasi AI (${selectedVoicePreset.shortName})`);
-    setStatusText(`Menghasilkan suara narasi ${selectedVoicePreset.shortName} untuk ${syncedScenes.length} adegan…`);
+    setProgressLabel(`3/4 · Membuat narasi AI (${activePreset})`);
+    setStatusText(`Menghasilkan suara narasi ${activePreset} untuk ${syncedScenes.length} adegan…`);
     let failedCount = 0;
+    let completedCount = 0;
+    let lastErrorMsg = '';
     try {
       const nextVoices: Array<AiVoiceTrack | null> = new Array(syncedScenes.length)
         .fill(null)
         .map((_, idx) => voices[idx] ?? null);
 
-      for (let i = 0; i < syncedScenes.length; i++) {
-        if (ctrl.signal.aborted) break;
-        setProgressPct(60 + ((i + 1) / syncedScenes.length) * 18);
-        setProgressLabel(`3/4 · Suara adegan ${i + 1}/${syncedScenes.length}`);
-        if (nextVoices[i]?.url) {
-          try {
-            URL.revokeObjectURL(nextVoices[i]!.url);
-          } catch {}
-        }
-        try {
-          nextVoices[i] = await synthesizeOneVoice(syncedScenes[i], ctrl.signal);
-          setVoices([...nextVoices]);
-        } catch (err) {
-          if ((err as { name?: string })?.name === 'AbortError' || ctrl.signal.aborted) {
-            return { tracks: nextVoices, aborted: true };
+      const concurrency = 3;
+      let cursor = 0;
+      const runWorker = async () => {
+        while (!ctrl.signal.aborted) {
+          const i = cursor++;
+          if (i >= syncedScenes.length) break;
+          if (nextVoices[i]?.url) {
+            try {
+              URL.revokeObjectURL(nextVoices[i]!.url);
+            } catch {}
           }
-          failedCount++;
-          nextVoices[i] = null;
+          try {
+            nextVoices[i] = await synthesizeOneVoice(syncedScenes[i], ctrl.signal);
+            setVoices([...nextVoices]);
+          } catch (err) {
+            if ((err as { name?: string })?.name === 'AbortError' || ctrl.signal.aborted) {
+              return;
+            }
+            failedCount++;
+            lastErrorMsg = err instanceof Error ? err.message : String(err);
+            nextVoices[i] = null;
+          } finally {
+            completedCount++;
+            setProgressPct(60 + (completedCount / syncedScenes.length) * 18);
+            setProgressLabel(`3/4 · Suara adegan ${completedCount}/${syncedScenes.length}`);
+          }
         }
-      }
+      };
+
+      await Promise.all(
+        Array.from({ length: Math.min(concurrency, syncedScenes.length) }, () => runWorker())
+      );
 
       if (ctrl.signal.aborted) {
         setStatusText('Pembuatan suara narasi dibatalkan.');
@@ -601,7 +926,7 @@ export function AiVideoView({
       setProgressLabel('3/4 · Suara narasi AI siap');
       setStatusText(
         failedCount > 0
-          ? `Narasi selesai dengan ${failedCount} adegan tanpa suara (Anda dapat klik "Suara AI" atau "Rekam Suara" pada adegan tersebut).`
+          ? `Narasi selesai dengan ${failedCount} adegan tanpa suara (${lastErrorMsg || 'coba klik "Suara AI" atau "Rekam Suara" pada adegan tersebut'}).`
           : 'Semua suara narasi siap dirangkai menjadi video.'
       );
       return { tracks: nextVoices, aborted: false };
@@ -939,6 +1264,216 @@ export function AiVideoView({
             </button>
           </div>
 
+          {/* Desktop-only Local AI Panel vs Web API-Key Cloud Info */}
+          {isRunningDesktop ? (
+            <div className="bg-[#0c1733] border border-[#1e3159] rounded-xl p-3.5 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Cpu className="w-4 h-4 text-[#c7ff55] shrink-0" />
+                  <span className="text-xs font-bold text-white truncate">
+                    {t('ai.localEngineTitle')}
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-700/60 text-[10.5px] font-semibold text-emerald-300 shrink-0">
+                    {t('ai.localReadyBadge')}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  disabled={checkingLocal}
+                  onClick={() => {
+                    clearLocalAiRuntimeCache();
+                    void probeLocalEngines(undefined, true);
+                  }}
+                  className="px-2.5 py-1 rounded-md bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-[11px] font-semibold text-[#dce6f7] inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3 h-3 ${checkingLocal ? 'animate-spin' : ''}`} />
+                  {t('ai.localRefreshBtn')}
+                </button>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5 text-[11px]">
+                <span className="px-2 py-0.5 rounded border border-emerald-700/60 bg-emerald-950/40 text-emerald-300">
+                  ● {t('ai.statusBuiltinReady')}
+                </span>
+                <span
+                  className={`px-2 py-0.5 rounded border ${
+                    localStatus?.ollama.available
+                      ? 'border-emerald-700/60 bg-emerald-950/40 text-emerald-300'
+                      : 'border-[#2a4173] bg-[#070e20] text-[#93a7cc]'
+                  }`}
+                >
+                  ●{' '}
+                  {localStatus?.ollama.available
+                    ? t('ai.statusOllamaReady', { count: localStatus.ollama.models.length })
+                    : t('ai.statusOllamaOff')}
+                </span>
+                <span
+                  className={`px-2 py-0.5 rounded border ${
+                    localStatus?.openaiLocal.available
+                      ? 'border-emerald-700/60 bg-emerald-950/40 text-emerald-300'
+                      : 'border-[#2a4173] bg-[#070e20] text-[#93a7cc]'
+                  }`}
+                >
+                  ●{' '}
+                  {localStatus?.openaiLocal.available
+                    ? t('ai.statusOpenAiReady')
+                    : t('ai.statusOpenAiOff')}
+                </span>
+                <span
+                  className={`px-2 py-0.5 rounded border ${
+                    localStatus?.localTts.voiceStudioAvailable
+                      ? 'border-emerald-700/60 bg-emerald-950/40 text-emerald-300'
+                      : 'border-[#2a4173] bg-[#070e20] text-[#93a7cc]'
+                  }`}
+                >
+                  ●{' '}
+                  {localStatus?.localTts.voiceStudioAvailable
+                    ? t('ai.statusVoiceStudioReady', {
+                        count: localStatus.localTts.voiceStudioProfilesCount || 0,
+                      })
+                    : t('ai.statusVoiceStudioOff')}
+                </span>
+                {localStatus?.binaries && (
+                  <>
+                    <span
+                      className={`px-2 py-0.5 rounded border ${
+                        localStatus.binaries.ffmpeg.available
+                          ? 'border-emerald-700/60 bg-emerald-950/40 text-emerald-300'
+                          : 'border-[#2a4173] bg-[#070e20] text-[#93a7cc]'
+                      }`}
+                    >
+                      ●{' '}
+                      {localStatus.binaries.ffmpeg.available
+                        ? `FFmpeg${localStatus.binaries.ffmpeg.optimized ? ' (Optimized)' : ''}`
+                        : 'FFmpeg (Browser WebCodecs)'}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded border ${
+                        localStatus.binaries.whisper.available
+                          ? 'border-emerald-700/60 bg-emerald-950/40 text-emerald-300'
+                          : 'border-[#2a4173] bg-[#070e20] text-[#93a7cc]'
+                      }`}
+                    >
+                      ●{' '}
+                      {localStatus.binaries.whisper.available
+                        ? `Whisper (${localStatus.binaries.whisper.binaryName || 'CLI'})`
+                        : 'Whisper CLI (Opsional)'}
+                    </span>
+                  </>
+                )}
+                {localStatus?.localTts && (
+                  <span className="px-2 py-0.5 rounded border border-emerald-700/60 bg-emerald-950/40 text-emerald-300">
+                    ● {t('ai.statusSpeechReady', { engine: localStatus.localTts.osEngineName })}
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-[11px] text-[#b8c7e3] mb-1">
+                    {t('ai.scriptEngineLabel')}
+                  </label>
+                  <select
+                    value={aiProvider}
+                    onChange={(e) => setAiProvider(e.target.value as ScriptEngineId)}
+                    className="w-full bg-[#070e20] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-2.5 py-2 text-xs"
+                  >
+                    <option value="local_auto">{t('ai.engineLocalAuto')}</option>
+                    <option value="local_builtin">{t('ai.engineLocalBuiltin')}</option>
+                    <option value="local_ollama">{t('ai.engineLocalOllama')}</option>
+                    <option value="local_openai">{t('ai.engineLocalOpenAi')}</option>
+                    <option value="gemini">{t('ai.engineGeminiCloud')}</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] text-[#b8c7e3] mb-1">
+                    {t('ai.voiceEngineLabel')}
+                  </label>
+                  <select
+                    value={voiceProvider}
+                    onChange={(e) => setVoiceProvider(e.target.value as VoiceEngineId)}
+                    className="w-full bg-[#070e20] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-2.5 py-2 text-xs"
+                  >
+                    <option value="local_auto">{t('ai.voiceLocalAuto')}</option>
+                    <option value="local_voicestudio">{t('ai.voiceLocalVoiceStudio')}</option>
+                    <option value="local_tts">{t('ai.voiceLocalTts')}</option>
+                    <option value="local_cadence">{t('ai.voiceLocalCadence')}</option>
+                    <option value="gemini">{t('ai.voiceGeminiCloud')}</option>
+                  </select>
+                </div>
+              </div>
+
+              {(aiProvider === 'local_ollama' || aiProvider === 'local_openai') && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-0.5">
+                  <div>
+                    <label className="block text-[11px] text-[#b8c7e3] mb-1">
+                      {t('ai.localModelLabel')}
+                    </label>
+                    <input
+                      type="text"
+                      list="paijo-local-models"
+                      value={localModel}
+                      onChange={(e) => setLocalModel(e.target.value)}
+                      placeholder={
+                        aiProvider === 'local_ollama'
+                          ? localStatus?.ollama.models[0] || 'llama3.2 / qwen2.5'
+                          : localStatus?.openaiLocal.models[0] || 'local-model'
+                      }
+                      className="w-full bg-[#070e20] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#ff6b00]"
+                    />
+                    <datalist id="paijo-local-models">
+                      {(aiProvider === 'local_ollama'
+                        ? localStatus?.ollama.models || []
+                        : localStatus?.openaiLocal.models || []
+                      ).map((m) => (
+                        <option key={m} value={m} />
+                      ))}
+                    </datalist>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-[#b8c7e3] mb-1">
+                      {t('ai.localEndpointLabel')}
+                    </label>
+                    <input
+                      type="text"
+                      value={localEndpoint}
+                      onChange={(e) => setLocalEndpoint(e.target.value)}
+                      placeholder={
+                        aiProvider === 'local_ollama'
+                          ? localStatus?.ollama.endpoint || 'http://127.0.0.1:11434'
+                          : localStatus?.openaiLocal.endpoint || 'http://127.0.0.1:1234/v1'
+                      }
+                      className="w-full bg-[#070e20] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#ff6b00]"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="bg-[#0c1733] border border-[#1e3159] rounded-xl p-3.5 space-y-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Sparkles className="w-4 h-4 text-[#c7ff55] shrink-0" />
+                  <span className="text-xs font-bold text-white truncate">
+                    {t('ai.webCloudTitle')}
+                  </span>
+                </div>
+                <span
+                  className={`px-2 py-0.5 rounded border text-[10.5px] font-semibold shrink-0 ${
+                    webApiReady
+                      ? 'bg-emerald-950/60 border-emerald-700/60 text-emerald-300'
+                      : 'bg-amber-950/50 border-amber-700/60 text-amber-200'
+                  }`}
+                >
+                  {webApiReady ? t('ai.webCloudReady') : t('ai.webCloudMissing')}
+                </span>
+              </div>
+              <p className="text-[11.5px] text-[#93a7cc] leading-relaxed">
+                {t('ai.webCloudDesc')}
+              </p>
+            </div>
+          )}
+
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
@@ -1057,36 +1592,42 @@ export function AiVideoView({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            <div>
-              <label className="block text-[11px] text-[#b8c7e3] mb-1">{t('ai.voiceCharLabel')}</label>
-              <div className="flex items-center gap-2">
-                <select
-                  value={voiceName}
-                  onChange={(e) => {
-                    stopVoiceSample();
-                    setVoiceName(e.target.value);
-                  }}
-                  className="flex-1 min-w-0 bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-2.5 py-2 text-xs"
-                >
-                  {VOICE_PRESETS.map((vp) => (
-                    <option key={vp.id} value={vp.id}>
-                      {vp.label}
-                    </option>
-                  ))}
-                </select>
-                {selectedVoicePreset.previewUrl && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div>
+                <label className="block text-[11px] text-[#b8c7e3] mb-1">{t('ai.voiceCharLabel')}</label>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={voiceName}
+                    onChange={(e) => {
+                      stopVoiceSample();
+                      setVoiceName(e.target.value);
+                    }}
+                    className="flex-1 min-w-0 bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-2.5 py-2 text-xs"
+                  >
+                    {allVoiceOptions.map((vp) => (
+                      <option key={vp.id} value={vp.id}>
+                        {vp.label}
+                      </option>
+                    ))}
+                  </select>
                   <button
                     type="button"
-                    onClick={handleToggleVoiceSample}
+                    disabled={loadingSampleId === selectedVoicePreset.id}
+                    onClick={() => void handleToggleVoiceSample(selectedVoicePreset.id)}
                     title={selectedVoicePreset.shortName}
-                    className={`px-2.5 py-2 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 cursor-pointer ${
+                    className={`px-2.5 py-2 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 cursor-pointer disabled:opacity-60 ${
                       playingSampleId === selectedVoicePreset.id
                         ? 'bg-[#c7ff55] text-[#111507] border-[#c7ff55]'
                         : 'bg-[#16264d] hover:bg-[#1e3363] border-[#2a4173] text-[#e4ecfa]'
                     }`}
                   >
-                    {playingSampleId === selectedVoicePreset.id ? (
+                    {loadingSampleId === selectedVoicePreset.id ? (
+                      <>
+                        <VoiceSampleSpinner />
+                        <span>Memuat…</span>
+                      </>
+                    ) : playingSampleId === selectedVoicePreset.id ? (
                       <>
                         <Square className="w-3 h-3 fill-current" />
                         {t('ai.stopSample')}
@@ -1098,23 +1639,110 @@ export function AiVideoView({
                       </>
                     )}
                   </button>
-                )}
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] text-[#b8c7e3] mb-1">{t('ai.speakingStyleLabel')}</label>
+                <select
+                  value={voiceStyle}
+                  onChange={(e) => setVoiceStyle(e.target.value)}
+                  className="w-full bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-2.5 py-2 text-xs"
+                >
+                  <option value="Clear, engaging short-form video narrator">{t('ai.styleShorts')}</option>
+                  <option value="Energetic, fast-paced YouTube creator">{t('ai.styleEnergetic')}</option>
+                  <option value="Calm, warm documentary storyteller">{t('ai.styleCalm')}</option>
+                  <option value="Confident professional presenter">{t('ai.stylePro')}</option>
+                </select>
               </div>
             </div>
-            <div>
-              <label className="block text-[11px] text-[#b8c7e3] mb-1">{t('ai.speakingStyleLabel')}</label>
-              <select
-                value={voiceStyle}
-                onChange={(e) => setVoiceStyle(e.target.value)}
-                className="w-full bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-2.5 py-2 text-xs"
-              >
-                <option value="Clear, engaging short-form video narrator">{t('ai.styleShorts')}</option>
-                <option value="Energetic, fast-paced YouTube creator">{t('ai.styleEnergetic')}</option>
-                <option value="Calm, warm documentary storyteller">{t('ai.styleCalm')}</option>
-                <option value="Confident professional presenter">{t('ai.stylePro')}</option>
-              </select>
+
+            {/* Per-voice character cards with instant audio sample buttons for all voices */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {allVoiceOptions.map((vp) => {
+                const isSelected = voiceName === vp.id;
+                const isPlaying = playingSampleId === vp.id;
+                const isLoading = loadingSampleId === vp.id;
+                return (
+                  <div
+                    key={vp.id}
+                    className={`rounded-lg border px-3 py-2 flex items-center justify-between gap-2 transition-colors ${
+                      isSelected
+                        ? 'bg-[#142347] border-[#c7ff55]'
+                        : 'bg-[#0c1733] border-[#1e3159] hover:border-[#2a4173]'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (voiceName !== vp.id) {
+                          stopVoiceSample();
+                          setVoiceName(vp.id);
+                        }
+                      }}
+                      className="min-w-0 flex-1 text-left cursor-pointer"
+                    >
+                      <div
+                        className={`text-xs font-bold truncate ${
+                          isSelected ? 'text-[#c7ff55]' : 'text-white'
+                        }`}
+                      >
+                        {vp.shortName}
+                      </div>
+                      <div className="text-[11px] text-[#93a7cc] truncate">{vp.roleDesc}</div>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isLoading}
+                      onClick={() => {
+                        setVoiceName(vp.id);
+                        void handleToggleVoiceSample(vp.id);
+                      }}
+                      aria-label={`${isPlaying ? t('ai.stopSample') : t('ai.sampleBtn')} ${vp.shortName}`}
+                      className={`px-2 py-1.5 rounded-md border text-[11px] font-semibold inline-flex items-center gap-1 shrink-0 cursor-pointer disabled:opacity-60 ${
+                        isPlaying
+                          ? 'bg-[#c7ff55] text-[#111507] border-[#c7ff55]'
+                          : 'bg-[#16264d] hover:bg-[#1e3363] border-[#2a4173] text-[#e4ecfa]'
+                      }`}
+                    >
+                      {isLoading ? (
+                        <VoiceSampleSpinner />
+                      ) : isPlaying ? (
+                        <Square className="w-3 h-3 fill-current" />
+                      ) : (
+                        <Volume2 className="w-3 h-3" />
+                      )}
+                      <span>
+                        {isLoading ? '…' : isPlaying ? t('ai.stopSample') : t('ai.sampleBtn')}
+                      </span>
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
+
+          {isRunningDesktop &&
+            selectedVoicePreset.previewUrl &&
+            (localStatus?.localTts.voiceStudioAvailable || voiceProvider === 'local_voicestudio') && (
+              <div className="bg-[#0c1733] border border-[#1e3159] rounded-lg px-3 py-2.5 flex flex-wrap items-center justify-between gap-2.5">
+                <label className="inline-flex items-center gap-2 text-[11px] text-[#dce6f7] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={vsImportConsent}
+                    onChange={(e) => setVsImportConsent(e.target.checked)}
+                  />
+                  <span>{t('ai.vsConsent')}</span>
+                </label>
+                <button
+                  type="button"
+                  disabled={!vsImportConsent || vsImporting || busy}
+                  onClick={handleImportSampleToVoiceStudio}
+                  className="px-3 py-1.5 rounded-md bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-[11px] font-semibold text-white disabled:opacity-40 cursor-pointer shrink-0"
+                >
+                  {vsImporting ? 'Mengimpor…' : `${t('ai.vsImportBtn')} (${selectedVoicePreset.shortName})`}
+                </button>
+              </div>
+            )}
 
           {scenes.length === 0 ? (
             <div className="border border-dashed border-[#2a4173] rounded-lg p-6 text-center text-xs text-[#93a7cc] bg-[#0c1733]">
@@ -1246,56 +1874,66 @@ export function AiVideoView({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[11px] text-[#b8c7e3] mb-1">{t('ai.visualEffect')}</label>
-              <select
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <label className="block text-xs font-semibold text-[#e4ecfa]">
+                  {t('ai.visualEffect')}
+                </label>
+                <span className="text-[11px] text-[#93a7cc]">
+                  Klik preview video untuk memilih efek
+                </span>
+              </div>
+              <VisualEffectPreviewGrid
                 value={visualEffect}
-                onChange={(e) => setVisualEffect(e.target.value as AiVisualEffect)}
-                className="w-full bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-2.5 py-2 text-xs"
-              >
-                <option value="kenburns">{t('ai.fxKenburns')}</option>
-                <option value="cinematic">{t('ai.fxCinematic')}</option>
-                <option value="pulse">{t('ai.fxPulse')}</option>
-                <option value="none">{t('ai.fxNone')}</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-[11px] text-[#b8c7e3] mb-1">{t('ai.transitionLabel')}</label>
-              <select
-                value={transitionStyle}
-                onChange={(e) => setTransitionStyle(e.target.value as AiTransitionStyle)}
-                className="w-full bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-2.5 py-2 text-xs"
-              >
-                <option value="fade">{t('ai.trFade')}</option>
-                <option value="zoom">{t('ai.trZoom')}</option>
-                <option value="slide">{t('ai.trSlide')}</option>
-                <option value="none">{t('ai.trNone')}</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-[11px] text-[#b8c7e3] mb-1">
-                {t('ai.audioGain')} (<span className="font-mono">{audioGainPct}%</span>)
-              </label>
-              <input
-                type="range"
-                min={50}
-                max={180}
-                value={audioGainPct}
-                onChange={(e) => setAudioGainPct(Number(e.target.value))}
-                className="w-full cursor-pointer"
+                onChange={setVisualEffect}
+                theme={theme}
+                customFrames={frames}
               />
             </div>
-            <div>
-              <label className="block text-[11px] text-[#b8c7e3] mb-1">{t('ai.renderFormat')}</label>
-              <select
-                value={exportFormat}
-                onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
-                className="w-full bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-2.5 py-2 text-xs"
-              >
-                <option value="webm">{t('studio.formatWebm')}</option>
-                <option value="mp4">{t('studio.formatMp4')}</option>
-              </select>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <label className="block text-xs font-semibold text-[#e4ecfa]">
+                  {t('ai.transitionLabel')}
+                </label>
+                <span className="text-[11px] text-[#93a7cc]">
+                  Contoh video transisi antar adegan
+                </span>
+              </div>
+              <TransitionPreviewGrid
+                value={transitionStyle}
+                onChange={setTransitionStyle}
+                theme={theme}
+                customFrames={frames}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <div>
+                <label className="block text-[11px] text-[#b8c7e3] mb-1">
+                  {t('ai.audioGain')} (<span className="font-mono">{audioGainPct}%</span>)
+                </label>
+                <input
+                  type="range"
+                  min={50}
+                  max={180}
+                  value={audioGainPct}
+                  onChange={(e) => setAudioGainPct(Number(e.target.value))}
+                  className="w-full cursor-pointer"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] text-[#b8c7e3] mb-1">{t('ai.renderFormat')}</label>
+                <select
+                  value={exportFormat}
+                  onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
+                  className="w-full bg-[#0c1733] text-[#f1f5fc] border border-[#2a4173] rounded-lg px-2.5 py-2 text-xs"
+                >
+                  <option value="webm">{t('studio.formatWebm')}</option>
+                  <option value="mp4">{t('studio.formatMp4')}</option>
+                </select>
+              </div>
             </div>
           </div>
 

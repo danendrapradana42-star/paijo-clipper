@@ -310,6 +310,31 @@ export const STYLE_OPTIONS: SubtitleStyleOption[] = [
     label: 'Neon · Sorotan Bercahaya',
     desc: 'Efek pendar neon menyala untuk konten hiburan & musik.',
   },
+  {
+    value: 'glitch_rgb',
+    label: 'Glitch RGB · Split Warna',
+    desc: 'Efek split warna cyan dan merah dinamis pada kata yang aktif.',
+  },
+  {
+    value: 'comic_boom',
+    label: 'Komik Aksi · Bingkai Miring',
+    desc: 'Blok kartu komik berkontur tebal dengan aksen miring yang tegas.',
+  },
+  {
+    value: 'fire_glow',
+    label: 'Api Hangat · Gradien Emas',
+    desc: 'Gradasi emas-oranye berpendar hangat untuk cerita dan hook dramatis.',
+  },
+  {
+    value: 'kinetic_underline',
+    label: 'Kinetik · Garis Sorot',
+    desc: 'Teks tegas dengan garis aksen tebal di bawah kata yang diucapkan.',
+  },
+  {
+    value: 'editorial_frame',
+    label: 'Bingkai Editorial · Garis Rapi',
+    desc: 'Kartu gelap transparan dengan bingkai halus dan penanda aksen.',
+  },
 ];
 
 export interface CaptionStylePreset {
@@ -393,6 +418,45 @@ export const CAPTION_PRESETS: CaptionStylePreset[] = [
       fontFamily: '"Poppins", "Plus Jakarta Sans", sans-serif',
       style: 'highlight',
       highlightColor: '#c7ff55',
+      caps: false,
+      italic: false,
+      fontWeight: '800',
+    },
+  },
+  {
+    id: 'cyber-glitch',
+    name: 'Cyber Glitch',
+    subtitle: 'JetBrains Mono · RGB',
+    patch: {
+      fontFamily: '"JetBrains Mono", monospace',
+      style: 'glitch_rgb',
+      highlightColor: '#38bdf8',
+      caps: true,
+      italic: false,
+      fontWeight: '800',
+    },
+  },
+  {
+    id: 'komik-aksi',
+    name: 'Komik Aksi',
+    subtitle: 'Bungee · Blok Komik',
+    patch: {
+      fontFamily: '"Bungee", sans-serif',
+      style: 'comic_boom',
+      highlightColor: '#ffe45c',
+      caps: true,
+      italic: false,
+      fontWeight: '800',
+    },
+  },
+  {
+    id: 'kinetik-hook',
+    name: 'Kinetik Hook',
+    subtitle: 'Outfit · Garis Sorot',
+    patch: {
+      fontFamily: '"Outfit", "Plus Jakarta Sans", sans-serif',
+      style: 'kinetic_underline',
+      highlightColor: '#ff5436',
       caps: false,
       italic: false,
       fontWeight: '800',

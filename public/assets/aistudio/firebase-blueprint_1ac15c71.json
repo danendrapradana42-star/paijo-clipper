@@ -1,0 +1,99 @@
+{
+  "entities": {
+    "AppRelease": {
+      "title": "AppRelease",
+      "description": "Cloud-stored application build/update release (developing draft or published release) following 0.0.1 minor and 0.1.0 major versioning.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 24,
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "baseVersion": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 24,
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "updateType": {
+          "type": "string",
+          "enum": ["minor", "major"],
+          "maxLength": 16
+        },
+        "status": {
+          "type": "string",
+          "enum": ["developing", "published"],
+          "maxLength": 16
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "releaseNotes": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "changes": {
+          "type": "array",
+          "description": "Bounded list of feature/fix bullet points (max 20 items)."
+        },
+        "packageUrl": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "buildTarget": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId",
+        "version",
+        "baseVersion",
+        "updateType",
+        "status",
+        "title",
+        "releaseNotes",
+        "changes",
+        "packageUrl",
+        "buildTarget",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AdminRole": {
+      "title": "AdminRole",
+      "description": "Verified developer admin access record.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "minLength": 3, "maxLength": 160 },
+        "role": { "type": "string", "enum": ["admin"], "maxLength": 16 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "role", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/appReleases/{releaseId}": {
+      "schema": { "$ref": "#/entities/AppRelease" },
+      "description": "Cloud storage dedicated exclusively to upcoming developing app updates and published app releases."
+    },
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/AdminRole" },
+      "description": "Read-only admin membership lookup documents."
+    }
+  }
+}

@@ -230,10 +230,14 @@ export function drawCaption(
     style === 'pop' ||
     style === 'box3d' ||
     style === 'highlight' ||
-    style === 'typewriter_box';
+    style === 'typewriter_box' ||
+    style === 'comic_boom';
   const gap = isPill ? 12 : 14;
   const padX =
-    style === 'pop' || style === 'box3d' || style === 'typewriter_box'
+    style === 'pop' ||
+    style === 'box3d' ||
+    style === 'typewriter_box' ||
+    style === 'comic_boom'
       ? 15
       : style === 'highlight'
         ? 10
@@ -277,13 +281,20 @@ export function drawCaption(
     targetCtx.translate(-W / 2, -cy);
   }
 
-  if (style === 'capcut' || style === 'karaoke_bar' || style === 'pill_glass') {
+  if (
+    style === 'capcut' ||
+    style === 'karaoke_bar' ||
+    style === 'pill_glass' ||
+    style === 'editorial_frame'
+  ) {
     targetCtx.fillStyle =
       style === 'pill_glass'
         ? 'rgba(14, 18, 28, 0.56)'
-        : style === 'karaoke_bar'
-          ? 'rgba(9,11,16,.72)'
-          : 'rgba(10,12,16,.84)';
+        : style === 'editorial_frame'
+          ? 'rgba(8, 12, 22, 0.86)'
+          : style === 'karaoke_bar'
+            ? 'rgba(9,11,16,.72)'
+            : 'rgba(10,12,16,.84)';
     targetCtx.beginPath();
     if (typeof targetCtx.roundRect === 'function') {
       targetCtx.roundRect(
@@ -291,15 +302,16 @@ export function drawCaption(
         cy - boxH / 2 - 6,
         totalWidth + 28,
         boxH + 12,
-        style === 'pill_glass' ? 999 : 16
+        style === 'pill_glass' ? 999 : style === 'editorial_frame' ? 10 : 16
       );
     } else {
       targetCtx.rect(boxX - 14, cy - boxH / 2 - 6, totalWidth + 28, boxH + 12);
     }
     targetCtx.fill();
-    if (style === 'pill_glass') {
-      targetCtx.lineWidth = 2;
-      targetCtx.strokeStyle = 'rgba(255,255,255,0.22)';
+    if (style === 'pill_glass' || style === 'editorial_frame') {
+      targetCtx.lineWidth = style === 'editorial_frame' ? 2 : 2;
+      targetCtx.strokeStyle =
+        style === 'editorial_frame' ? hiColor : 'rgba(255,255,255,0.22)';
       targetCtx.stroke();
     }
   }
@@ -483,6 +495,84 @@ export function drawCaption(
         targetCtx.fillStyle = '#f8fafc';
       }
       targetCtx.fillText(word, cx, cy, maxWidth);
+      targetCtx.restore();
+    } else if (style === 'glitch_rgb') {
+      const jitter = isActive ? Math.sin(t * 28 + wi * 3) * 2.2 : 0;
+      const anim = isActive ? 1.1 : 1;
+      targetCtx.save();
+      targetCtx.translate(cx, cy);
+      targetCtx.scale(anim, anim);
+      targetCtx.translate(-cx, -cy);
+      targetCtx.lineJoin = 'round';
+      targetCtx.font = resolveCanvasFontString(fontFamily, fontSize, fontWeight, isItalic);
+      targetCtx.fillStyle = 'rgba(56, 189, 248, 0.85)';
+      targetCtx.fillText(word, cx - (isActive ? 4 : 2) + jitter, cy - 1, maxWidth);
+      targetCtx.fillStyle = 'rgba(255, 59, 107, 0.85)';
+      targetCtx.fillText(word, cx + (isActive ? 4 : 2) - jitter, cy + 1, maxWidth);
+      targetCtx.lineWidth = 6;
+      targetCtx.strokeStyle = '#07080c';
+      targetCtx.strokeText(word, cx, cy, maxWidth);
+      targetCtx.fillStyle = isActive ? hiColor : '#ffffff';
+      targetCtx.fillText(word, cx, cy, maxWidth);
+      targetCtx.restore();
+    } else if (style === 'comic_boom') {
+      const anim = isActive ? 1.1 : 1;
+      const tilt = isActive ? -0.05 : 0.015;
+      targetCtx.save();
+      targetCtx.translate(cx, cy);
+      targetCtx.rotate(tilt);
+      targetCtx.scale(anim, anim);
+      targetCtx.translate(-cx, -cy);
+      targetCtx.fillStyle = '#07080c';
+      targetCtx.fillRect(x + 4, cy - boxH / 2 + 4, bw, boxH);
+      targetCtx.fillStyle = isActive ? hiColor : '#ffffff';
+      targetCtx.fillRect(x, cy - boxH / 2, bw, boxH);
+      targetCtx.lineWidth = 3;
+      targetCtx.strokeStyle = '#07080c';
+      targetCtx.strokeRect(x, cy - boxH / 2, bw, boxH);
+      targetCtx.fillStyle = isActive ? hiInk : '#11141c';
+      targetCtx.fillText(word, cx, cy, maxWidth);
+      targetCtx.restore();
+    } else if (style === 'fire_glow') {
+      const anim = isActive ? 1 + Math.min(0.12, 0.05 + wordProgress * 0.07) : 1;
+      targetCtx.save();
+      targetCtx.translate(cx, cy);
+      targetCtx.scale(anim, anim);
+      targetCtx.translate(-cx, -cy);
+      targetCtx.lineJoin = 'round';
+      targetCtx.lineWidth = 9;
+      targetCtx.strokeStyle = '#180804';
+      targetCtx.strokeText(word, cx, cy, maxWidth);
+      if (isActive) {
+        const fireGrad = targetCtx.createLinearGradient(0, cy - fontSize * 0.55, 0, cy + fontSize * 0.55);
+        fireGrad.addColorStop(0, '#fff4b8');
+        fireGrad.addColorStop(0.5, hiColor === '#c7ff55' ? '#ffb703' : hiColor);
+        fireGrad.addColorStop(1, '#ff5436');
+        targetCtx.shadowColor = '#ff5436';
+        targetCtx.shadowBlur = 18;
+        targetCtx.fillStyle = fireGrad;
+      } else {
+        targetCtx.fillStyle = '#f8fafc';
+      }
+      targetCtx.fillText(word, cx, cy, maxWidth);
+      targetCtx.restore();
+    } else if (style === 'kinetic_underline') {
+      const anim = isActive ? 1.07 : 1;
+      targetCtx.save();
+      targetCtx.translate(cx, cy);
+      targetCtx.scale(anim, anim);
+      targetCtx.translate(-cx, -cy);
+      targetCtx.lineJoin = 'round';
+      targetCtx.lineWidth = 7;
+      targetCtx.strokeStyle = 'rgba(0,0,0,0.88)';
+      targetCtx.strokeText(word, cx, cy, maxWidth);
+      targetCtx.fillStyle = isActive ? '#ffffff' : 'rgba(255,255,255,0.82)';
+      targetCtx.fillText(word, cx, cy, maxWidth);
+      if (isActive) {
+        const lineW = Math.max(12, textWidths[i] * Math.min(1, 0.35 + wordProgress * 0.75));
+        targetCtx.fillStyle = hiColor;
+        targetCtx.fillRect(cx - lineW / 2, cy + fontSize * 0.48, lineW, Math.max(3, Math.round(fontSize * 0.13)));
+      }
       targetCtx.restore();
     } else {
       const anim = isActive ? 1 + Math.min(0.1, wordProgress * 0.1) : 1;

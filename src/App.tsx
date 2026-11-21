@@ -243,9 +243,17 @@ export default function App() {
       }
     });
 
-    const autoRepo = String(
-      import.meta.env.VITE_AUTO_GITHUB_REPO || import.meta.env.VITE_DESKTOP_GITHUB_REPO || ''
-    ).trim();
+    const savedRepo = (() => {
+      try {
+        return localStorage.getItem('autoclipper.update.githubRepo') || '';
+      } catch {
+        return '';
+      }
+    })().trim();
+    const autoRepo =
+      String(
+        import.meta.env.VITE_AUTO_GITHUB_REPO || import.meta.env.VITE_DESKTOP_GITHUB_REPO || ''
+      ).trim() || savedRepo;
 
     fetch('/api/app/check-update', {
       method: 'POST',

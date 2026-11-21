@@ -7,18 +7,40 @@ import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
+import type { AiTheme } from '../src/types/clipper';
+import {
+  generateBuiltinLocalScript,
+  generateOllamaScript,
+  generateOpenAiCompatScript,
+  probeLocalAiEngines,
+  type LocalAiProvider,
+} from './localAi';
+import {
+  probeLocalTtsCapability,
+  synthesizeLocalSpeechWav,
+  type LocalVoiceProvider,
+} from './localTts';
+import {
+  VOICE_STUDIO_ASSETS,
+  ensurePlayableAudioDataUrl,
+  fetchVoiceStudioProfiles,
+  importAssetToVoiceStudio,
+  probeVoiceStudioLocal,
+  resolveVoiceStudioAsset,
+} from './voiceStudio';
 
 dotenv.config();
 
 const execFileAsync = promisify(execFile);
 
-function getAiClient(): GoogleGenAI {
+function getAiClient(apiVersion = 'v1beta'): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
     throw new Error('GEMINI_API_KEY belum dikonfigurasi pada server.');
   }
   return new GoogleGenAI({
     apiKey,
+    apiVersion,
     httpOptions: {
       headers: {
         'User-Agent': 'aistudio-build',
@@ -523,18 +545,69 @@ export function createApiApp(): express.Express {
     }
   }
 
+  function readEnvExeArtifacts(fallbackVersion: string): DesktopArtifactEntry[] {
+    const out: DesktopArtifactEntry[] = [];
+    const pairs: Array<{
+      urlRaw: string | undefined;
+      id: 'setup-exe' | 'portable-exe';
+      kind: 'installer' | 'portable';
+      defaultFilename: string;
+    }> = [
+      {
+        urlRaw: process.env.DESKTOP_SETUP_EXE_URL,
+        id: 'setup-exe',
+        kind: 'installer',
+        defaultFilename: `Paijo Clip-${fallbackVersion}-Setup-x64.exe`,
+      },
+      {
+        urlRaw: process.env.DESKTOP_PORTABLE_EXE_URL,
+        id: 'portable-exe',
+        kind: 'portable',
+        defaultFilename: `Paijo Clip-${fallbackVersion}-Portable-x64.exe`,
+      },
+    ];
+    for (const item of pairs) {
+      const clean = String(item.urlRaw || '').trim();
+      if (!/^https?:\/\//i.test(clean)) continue;
+      let filename = item.defaultFilename;
+      try {
+        const u = new URL(clean);
+        const base = decodeURIComponent(u.pathname.split('/').pop() || '');
+        if (/\.exe$/i.test(base)) filename = base;
+      } catch {
+        // use default filename
+      }
+      out.push({
+        id: item.id,
+        kind: item.kind,
+        source: 'github',
+        version: fallbackVersion,
+        filename,
+        sizeBytes: 0,
+        downloadUrl: clean,
+        updatedAtMs: Date.now(),
+      });
+    }
+    return out;
+  }
+
   async function resolveMergedDesktopArtifacts(overrideRepo?: string): Promise<{
     version: string;
     githubConfigured: boolean;
     artifacts: DesktopArtifactEntry[];
   }> {
+    const pkgVer = readAppPackageVersion();
     const localArtifacts = scanLocalDesktopArtifacts();
+    const envUrlArtifacts = readEnvExeArtifacts(pkgVer);
     const repo = resolveDesktopGithubRepo(overrideRepo);
     const ghResult = repo
       ? await fetchGithubDesktopArtifacts(repo)
-      : { version: readAppPackageVersion(), artifacts: [] };
+      : { version: pkgVer, artifacts: [] };
 
     const mergedByKind = new Map<'installer' | 'portable', DesktopArtifactEntry>();
+    for (const envItem of envUrlArtifacts) {
+      mergedByKind.set(envItem.kind, envItem);
+    }
     for (const item of ghResult.artifacts) {
       mergedByKind.set(item.kind, item);
     }
@@ -546,11 +619,11 @@ export function createApiApp(): express.Express {
       (a, b) => (a.kind === 'installer' ? -1 : 1) - (b.kind === 'installer' ? -1 : 1)
     );
     const bestVersion =
-      merged.find((m) => m.version)?.version || ghResult.version || readAppPackageVersion();
+      merged.find((m) => m.version)?.version || ghResult.version || pkgVer;
 
     return {
       version: bestVersion,
-      githubConfigured: Boolean(repo),
+      githubConfigured: Boolean(repo || envUrlArtifacts.length > 0),
       artifacts: merged,
     };
   }
@@ -990,7 +1063,135 @@ export function createApiApp(): express.Express {
     }
   });
 
-  // AI Video Text Generation Agent (Gemini 4 Hydrogen — Min. 5–10 Minutes)
+  // Probe available local AI, native binaries (ffmpeg/whisper), & offline speech engines (Desktop runtime only)
+  app.get('/api/ai-video/local-status', async (req, res) => {
+    try {
+      const modeParam = typeof req.query.mode === 'string' ? req.query.mode.trim() : '';
+      const isWeb = Boolean(process.env.VERCEL) || modeParam === 'web';
+      const aiConfigured = Boolean(
+        process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'MY_GEMINI_API_KEY'
+      );
+
+      if (isWeb) {
+        res.json({
+          desktopOnly: true,
+          builtinStory: { available: false, label: 'Khusus Aplikasi Desktop' },
+          ollama: { available: false, endpoint: 'http://127.0.0.1:11434', models: [] },
+          openaiLocal: { available: false, endpoint: 'http://127.0.0.1:1234/v1', models: [] },
+          cloudGemini: { available: aiConfigured },
+          binaries: {
+            ffmpeg: { available: false, optimized: false, accelerators: [] },
+            whisper: { available: false },
+          },
+          localTts: {
+            osSpeechAvailable: false,
+            osEngineName: 'Gemini Cloud TTS + Voice Studio',
+            cadenceAvailable: false,
+            voiceStudioAvailable: false,
+            voiceStudioEndpoint: 'http://127.0.0.1:3900',
+            voiceStudioProfilesCount: 0,
+          },
+        });
+        return;
+      }
+
+      const customEndpoint =
+        typeof req.query.endpoint === 'string' ? req.query.endpoint.trim() : undefined;
+      const ffmpegPath =
+        typeof req.query.ffmpegPath === 'string' ? req.query.ffmpegPath.trim() : undefined;
+      const whisperPath =
+        typeof req.query.whisperPath === 'string' ? req.query.whisperPath.trim() : undefined;
+      const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
+      const [engines, tts] = await Promise.all([
+        probeLocalAiEngines(customEndpoint, { forceRefresh, ffmpegPath, whisperPath }),
+        probeLocalTtsCapability(),
+      ]);
+      res.json({
+        desktopOnly: false,
+        ...engines,
+        localTts: tts,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  // VoiceStudio local proxy routes (Desktop) + GitHub Voice Studio samples list (Web & Desktop)
+  app.get('/api/voice-studio/status', async (req, res) => {
+    const modeParam = typeof req.query.mode === 'string' ? req.query.mode.trim() : '';
+    const isWeb = Boolean(process.env.VERCEL) || modeParam === 'web';
+    const samples = VOICE_STUDIO_ASSETS.map((a) => ({
+      id: a.id,
+      sampleAlias: a.sampleAlias,
+      displayName: a.displayName,
+      label: a.label,
+      publicUrl: a.publicUrl,
+      language: a.language,
+    }));
+    if (isWeb) {
+      res.json({
+        available: false,
+        desktopOnly: true,
+        endpoint: '',
+        profiles: [],
+        samples,
+      });
+      return;
+    }
+    const status = await probeVoiceStudioLocal();
+    res.json({
+      ...status,
+      desktopOnly: false,
+      samples,
+    });
+  });
+
+  app.get('/api/voice-studio/profiles', async (req, res) => {
+    const modeParam = typeof req.query.mode === 'string' ? req.query.mode.trim() : '';
+    if (Boolean(process.env.VERCEL) || modeParam === 'web') {
+      res.status(403).json({ error: 'VoiceStudio lokal hanya tersedia di aplikasi desktop.' });
+      return;
+    }
+    try {
+      const status = await probeVoiceStudioLocal();
+      if (!status.available) {
+        res.status(503).json({ error: 'VoiceStudio lokal (127.0.0.1:3900) belum berjalan.' });
+        return;
+      }
+      const profiles =
+        status.profiles.length > 0 ? status.profiles : await fetchVoiceStudioProfiles();
+      res.json({ profiles, endpoint: status.endpoint });
+    } catch (err: unknown) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : 'Gagal membaca profil VoiceStudio.',
+      });
+    }
+  });
+
+  app.post('/api/voice-studio/import-sample', async (req, res) => {
+    if (Boolean(process.env.VERCEL) || req.body?.clientMode === 'web') {
+      res.status(403).json({ error: 'Impor VoiceStudio lokal hanya tersedia di aplikasi desktop.' });
+      return;
+    }
+    try {
+      const { sampleId, permissionConfirmed } = req.body ?? {};
+      if (!permissionConfirmed) {
+        res.status(400).json({
+          error: 'Centang pernyataan izin pemilik suara sebelum membuat profil di VoiceStudio.',
+        });
+        return;
+      }
+      const created = await importAssetToVoiceStudio(String(sampleId || 'ricky'));
+      res.json(created);
+    } catch (err: unknown) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : 'Gagal mengimpor sampel ke VoiceStudio.',
+      });
+    }
+  });
+
+  // AI Video Text Generation Agent (Desktop: Local Built-in/Ollama/LM Studio or Gemini; Web: Gemini API Key only)
   app.post('/api/ai-video/text', async (req, res) => {
     try {
       const {
@@ -1000,6 +1201,10 @@ export function createApiApp(): express.Express {
         language = 'id',
         visualTheme = 'cinematic',
         videoType = 'general',
+        aiProvider = 'local_auto',
+        localModel = '',
+        localEndpoint = '',
+        clientMode = 'web',
       } = req.body ?? {};
       const cleanPrompt = String(prompt || '').trim();
       if (!cleanPrompt) {
@@ -1011,7 +1216,119 @@ export function createApiApp(): express.Express {
       const targetTotalSec = Math.round(safeMinutes * 60);
       const targetScenes = Math.max(15, Math.min(45, Number(sceneCount) || Math.round(safeMinutes * 4.2)));
       const perSceneTarget = Math.max(12, Math.round(targetTotalSec / targetScenes));
-      const langLabel = LANGUAGE_NAME_MAP[String(language || 'id').toLowerCase()] || 'Indonesian (Bahasa Indonesia)';
+      const langCode = String(language || 'id').toLowerCase();
+      const langLabel = LANGUAGE_NAME_MAP[langCode] || 'Indonesian (Bahasa Indonesia)';
+      const safeTheme: AiTheme =
+        visualTheme === 'editorial' || visualTheme === 'tech' || visualTheme === 'minimal'
+          ? visualTheme
+          : 'cinematic';
+
+      const isWebMode = Boolean(process.env.VERCEL) || String(clientMode) !== 'desktop';
+      const provider: LocalAiProvider = isWebMode
+        ? 'gemini'
+        : (String(aiProvider || 'local_auto') as LocalAiProvider);
+
+      if (provider === 'local_builtin') {
+        const result = generateBuiltinLocalScript({
+          prompt: cleanPrompt,
+          targetScenes,
+          targetTotalSec,
+          language: langCode,
+          visualTheme: safeTheme,
+          videoType: String(videoType || 'general'),
+        });
+        res.json(result);
+        return;
+      }
+
+      if (provider === 'local_ollama') {
+        const result = await generateOllamaScript({
+          prompt: cleanPrompt,
+          targetScenes,
+          targetTotalSec,
+          safeMinutes,
+          language: langCode,
+          langLabel,
+          visualTheme: safeTheme,
+          videoType: String(videoType || 'general'),
+          endpoint: String(localEndpoint || '').trim() || undefined,
+          model: String(localModel || '').trim() || undefined,
+        });
+        res.json(result);
+        return;
+      }
+
+      if (provider === 'local_openai') {
+        const result = await generateOpenAiCompatScript({
+          prompt: cleanPrompt,
+          targetScenes,
+          targetTotalSec,
+          safeMinutes,
+          language: langCode,
+          langLabel,
+          visualTheme: safeTheme,
+          videoType: String(videoType || 'general'),
+          endpoint: String(localEndpoint || '').trim() || undefined,
+          model: String(localModel || '').trim() || undefined,
+        });
+        res.json(result);
+        return;
+      }
+
+      if (provider === 'local_auto') {
+        const status = await probeLocalAiEngines(String(localEndpoint || '').trim() || undefined);
+        if (status.ollama.available && status.ollama.models.length > 0) {
+          try {
+            const ollamaRes = await generateOllamaScript({
+              prompt: cleanPrompt,
+              targetScenes,
+              targetTotalSec,
+              safeMinutes,
+              language: langCode,
+              langLabel,
+              visualTheme: safeTheme,
+              videoType: String(videoType || 'general'),
+              endpoint: status.ollama.endpoint,
+              model: String(localModel || '').trim() || status.ollama.models[0],
+            });
+            res.json(ollamaRes);
+            return;
+          } catch {
+            // Fall through to next local engine cleanly
+          }
+        }
+        if (status.openaiLocal.available) {
+          try {
+            const openAiRes = await generateOpenAiCompatScript({
+              prompt: cleanPrompt,
+              targetScenes,
+              targetTotalSec,
+              safeMinutes,
+              language: langCode,
+              langLabel,
+              visualTheme: safeTheme,
+              videoType: String(videoType || 'general'),
+              endpoint: status.openaiLocal.endpoint,
+              model: String(localModel || '').trim() || status.openaiLocal.models[0],
+            });
+            res.json(openAiRes);
+            return;
+          } catch {
+            // Fall through to built-in offline engine cleanly
+          }
+        }
+        const builtinRes = generateBuiltinLocalScript({
+          prompt: cleanPrompt,
+          targetScenes,
+          targetTotalSec,
+          language: langCode,
+          visualTheme: safeTheme,
+          videoType: String(videoType || 'general'),
+        });
+        res.json(builtinRes);
+        return;
+      }
+
       const ai = getAiClient();
 
       const response = await withRetry(() =>
@@ -1098,6 +1415,7 @@ Each scene must be around ${perSceneTarget} seconds long (12-18 seconds), with r
         summary: raw.summary || '',
         totalDurationSec: cursor,
         scenes,
+        engineUsed: 'gemini-cloud',
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1105,40 +1423,26 @@ Each scene must be around ${perSceneTarget} seconds long (12-18 seconds), with r
     }
   });
 
-  // AI Video Voice Agent (Gemini 3.8 Flash TTS Voice Design + Flash Lite TTS -> WAV)
-  const CUSTOM_VOICE_PROFILES: Record<
-    string,
-    { label: string; baseVoice: 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Zephyr'; personaStyle: string }
-  > = {
-    ricky: {
-      label: 'Ricky',
-      baseVoice: 'Zephyr',
-      personaStyle:
-        'Soft, gentle, warm, authentic Indonesian male narrator with calm coastal storytelling cadence, unhurried phrasing, and intimate conversational clarity',
-    },
-    sikedewo: {
-      label: 'Sikedewo',
-      baseVoice: 'Kore',
-      personaStyle:
-        'Tender, calm, serene, and crystal-clear Indonesian female storyteller with gentle emotional resonance, poised pacing, and soothing narration',
-    },
-    todd: {
-      label: 'Todd',
-      baseVoice: 'Puck',
-      personaStyle:
-        'Clear, engaging, articulate, and educational male host with upbeat curiosity, crisp articulation, and friendly explainer delivery',
-    },
-    nichalia: {
-      label: 'Nichalia Schwartz',
-      baseVoice: 'Kore',
-      personaStyle:
-        'Smart, confident, bright, and friendly young adult female narrator with warm enthusiasm, crisp modern delivery, and inviting energy',
-    },
+  // Bounded in-memory TTS cache to avoid redundant API calls on retries/re-renders
+  const ttsAudioCache = new Map<string, { audioDataUrl: string; engineUsed: string }>();
+  const setCachedTts = (key: string, val: { audioDataUrl: string; engineUsed: string }) => {
+    if (ttsAudioCache.size >= 80) {
+      const firstKey = ttsAudioCache.keys().next().value;
+      if (firstKey) ttsAudioCache.delete(firstKey);
+    }
+    ttsAudioCache.set(key, val);
   };
 
   app.post('/api/ai-video/voice', async (req, res) => {
     try {
-      const { text, voiceName = 'ricky', style = 'Clear, engaging short-form video narrator' } = req.body ?? {};
+      const {
+        text,
+        voiceName = 'ricky',
+        style = 'Clear, engaging short-form video narrator',
+        voiceProvider = 'local_auto',
+        language = 'id',
+        clientMode = 'web',
+      } = req.body ?? {};
       const cleanText = String(text || '').trim();
       if (!cleanText) {
         res.status(400).json({ error: 'Teks narasi kosong.' });
@@ -1146,65 +1450,176 @@ Each scene must be around ${perSceneTarget} seconds long (12-18 seconds), with r
       }
 
       const requestedVoice = String(voiceName || 'ricky');
-      const customProfile = CUSTOM_VOICE_PROFILES[requestedVoice];
-      const allowedStandardVoices = new Set(['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr']);
+      const requestedStyle = String(style || 'Clear, engaging short-form video narrator').trim();
+      const langCode = String(language || 'id').toLowerCase();
+      const isWebMode = Boolean(process.env.VERCEL) || String(clientMode) !== 'desktop';
+      const vProvider: LocalVoiceProvider = isWebMode
+        ? 'gemini'
+        : (String(voiceProvider || 'local_auto') as LocalVoiceProvider);
+
+      const cacheKey = `${vProvider}|${requestedVoice}|${requestedStyle}|${langCode}|${cleanText}`;
+      const cached = ttsAudioCache.get(cacheKey);
+      if (cached) {
+        res.json(cached);
+        return;
+      }
+
+      if (vProvider !== 'gemini') {
+        const localRes = await synthesizeLocalSpeechWav({
+          text: cleanText,
+          voiceName: requestedVoice,
+          style: requestedStyle,
+          language: langCode,
+          provider: vProvider,
+        });
+        setCachedTts(cacheKey, localRes);
+        res.json(localRes);
+        return;
+      }
+
+      const customProfile = resolveVoiceStudioAsset(requestedVoice);
+      const allowedStandardVoices = new Set([
+        'Puck',
+        'Charon',
+        'Kore',
+        'Fenrir',
+        'Zephyr',
+        'Aoede',
+        'Orus',
+        'Leda',
+      ]);
       const baseVoice = customProfile
         ? customProfile.baseVoice
         : allowedStandardVoices.has(requestedVoice)
           ? requestedVoice
           : 'Kore';
 
-      const requestedStyle = String(style || 'Clear, engaging short-form video narrator').trim();
+      const langLabel = LANGUAGE_NAME_MAP[langCode] || 'Indonesian (Bahasa Indonesia)';
       const combinedStyle = customProfile
-        ? `${customProfile.personaStyle}. Direction: ${requestedStyle}`
-        : requestedStyle;
+        ? `${customProfile.personaStyle}. Spoken language: ${langLabel}. Delivery direction: ${requestedStyle}`
+        : `Spoken language: ${langLabel}. Delivery direction: ${requestedStyle}`;
 
-      const ai = getAiClient();
+      const ai = getAiClient('v1beta');
 
-      const ttsPrompt = combinedStyle
-        ? `[Voice style: ${combinedStyle}]\n\n${cleanText}`
-        : cleanText;
+      const tryGenerateTts = async (opts: {
+        model: 'gemini-3.8-flash-tts' | 'gemini-3.8-flash-lite-tts';
+        useSpeechConfig: boolean;
+        useSpeechMetadata: boolean;
+      }) => {
+        const part: Record<string, unknown> = opts.useSpeechMetadata
+          ? {
+              text: cleanText,
+              speechMetadata: {
+                style: `${baseVoice} voice (${customProfile?.gender || 'Natural'}): ${combinedStyle}`,
+              },
+            }
+          : {
+              text: `Read aloud ONLY the following script in ${langLabel} (${baseVoice} voice, ${combinedStyle}). Do not read these instructions:\n\n${cleanText}`,
+            };
 
-      const callTtsModel = (model: 'gemini-3.8-flash-tts' | 'gemini-3.8-flash-lite-tts') =>
-        withRetry(() =>
+        const config: Record<string, unknown> = {
+          responseModalities: ['AUDIO'],
+        };
+        if (opts.useSpeechConfig) {
+          config.speechConfig = {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: baseVoice },
+            },
+          };
+        }
+
+        return withRetry(() =>
           ai.models.generateContent({
-            model,
+            model: opts.model,
             contents: [
               {
                 role: 'user',
-                parts: [{ text: ttsPrompt }],
+                parts: [part as { text: string }],
               },
             ],
-            config: {
-              responseModalities: ['AUDIO'],
-              speechConfig: {
-                voiceConfig: {
-                  prebuiltVoiceConfig: { voiceName: baseVoice },
-                },
-              },
+            config: config as {
+              responseModalities: string[];
+              speechConfig?: { voiceConfig: { prebuiltVoiceConfig: { voiceName: string } } };
             },
           })
         );
+      };
+
+      const callTtsModel = async (model: 'gemini-3.8-flash-tts' | 'gemini-3.8-flash-lite-tts') => {
+        try {
+          return await tryGenerateTts({
+            model,
+            useSpeechConfig: true,
+            useSpeechMetadata: true,
+          });
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          const rejectSpeechConfig = /speechConfig/i.test(msg) && /Unknown name|INVALID_ARGUMENT/i.test(msg);
+          const rejectSpeechMeta = /speechMetadata/i.test(msg) && /Unknown name|INVALID_ARGUMENT/i.test(msg);
+          if (!rejectSpeechConfig && !rejectSpeechMeta) {
+            throw err;
+          }
+          try {
+            return await tryGenerateTts({
+              model,
+              useSpeechConfig: !rejectSpeechConfig,
+              useSpeechMetadata: !rejectSpeechMeta,
+            });
+          } catch (err2: unknown) {
+            const msg2 = err2 instanceof Error ? err2.message : String(err2);
+            if (/Unknown name/i.test(msg2)) {
+              return tryGenerateTts({
+                model,
+                useSpeechConfig: false,
+                useSpeechMetadata: false,
+              });
+            }
+            throw err2;
+          }
+        }
+      };
 
       let response;
+      let modelUsed = 'gemini-3.8-flash-lite-tts';
       if (customProfile) {
         try {
           response = await callTtsModel('gemini-3.8-flash-tts');
-        } catch {
-          response = await callTtsModel('gemini-3.8-flash-lite-tts');
+          modelUsed = 'gemini-3.8-flash-tts';
+        } catch (primaryErr: unknown) {
+          try {
+            response = await callTtsModel('gemini-3.8-flash-lite-tts');
+            modelUsed = 'gemini-3.8-flash-lite-tts';
+          } catch (fallbackErr: unknown) {
+            const m1 = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
+            const m2 = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+            throw new Error(m2 === m1 ? m2 : `${m1} | fallback: ${m2}`);
+          }
         }
       } else {
-        response = await callTtsModel('gemini-3.8-flash-lite-tts');
+        try {
+          response = await callTtsModel('gemini-3.8-flash-lite-tts');
+        } catch {
+          response = await callTtsModel('gemini-3.8-flash-tts');
+          modelUsed = 'gemini-3.8-flash-tts';
+        }
       }
 
-      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      const inlinePart = response.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+      const base64Audio = inlinePart?.data;
       if (!base64Audio) {
         throw new Error('Model TTS tidak mengembalikan data audio.');
       }
 
-      res.json({
-        audioDataUrl: `data:audio/wav;base64,${base64Audio}`,
-      });
+      const audioDataUrl = ensurePlayableAudioDataUrl(
+        base64Audio,
+        inlinePart?.mimeType || 'audio/wav'
+      );
+      const result = {
+        audioDataUrl,
+        engineUsed: customProfile ? `voice-studio:${modelUsed}` : modelUsed,
+      };
+      setCachedTts(cacheKey, result);
+      res.json(result);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: `Pembuatan suara narasi gagal: ${msg}` });

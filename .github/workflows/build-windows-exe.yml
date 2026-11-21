@@ -20,6 +20,7 @@ jobs:
     env:
       npm_config_legacy_peer_deps: "true"
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
