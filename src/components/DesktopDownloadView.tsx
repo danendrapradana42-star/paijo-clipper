@@ -41,6 +41,97 @@ interface DesktopDownloadViewProps {
   onOpenUpdates: () => void;
 }
 
+const AUTO_GITHUB_REPO = String(
+  import.meta.env.VITE_AUTO_GITHUB_REPO || import.meta.env.VITE_DESKTOP_GITHUB_REPO || ''
+).trim();
+
+async function fetchGithubReleasesBrowserFallback(
+  repo: string
+): Promise<{ version: string; artifacts: DesktopArtifact[] } | null> {
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) return null;
+  const parseRelease = (rel: {
+    tag_name?: string;
+    name?: string;
+    published_at?: string;
+    draft?: boolean;
+    assets?: Array<{
+      name?: string;
+      size?: number;
+      browser_download_url?: string;
+      updated_at?: string;
+    }>;
+  }) => {
+    const assets = Array.isArray(rel.assets) ? rel.assets : [];
+    const ver =
+      String(rel.tag_name || rel.name || CLIENT_APP_VERSION)
+        .replace(/^v/i, '')
+        .trim() || CLIENT_APP_VERSION;
+    const valid = assets.filter(
+      (a) =>
+        a.name &&
+        a.browser_download_url &&
+        /\.exe$/i.test(a.name) &&
+        !/uninstaller/i.test(a.name)
+    );
+    const portable = valid.find((a) => /portable/i.test(a.name || ''));
+    const setup =
+      valid.find((a) => /setup/i.test(a.name || '') && !/portable/i.test(a.name || '')) ||
+      valid.find((a) => !/portable/i.test(a.name || ''));
+    const out: DesktopArtifact[] = [];
+    if (setup?.name && setup.browser_download_url) {
+      out.push({
+        id: 'setup-exe',
+        kind: 'installer',
+        source: 'github',
+        version: ver,
+        filename: setup.name,
+        sizeBytes: Number(setup.size) || 0,
+        downloadUrl: setup.browser_download_url,
+        updatedAtMs: Date.parse(setup.updated_at || rel.published_at || '') || Date.now(),
+      });
+    }
+    if (portable?.name && portable.browser_download_url) {
+      out.push({
+        id: 'portable-exe',
+        kind: 'portable',
+        source: 'github',
+        version: ver,
+        filename: portable.name,
+        sizeBytes: Number(portable.size) || 0,
+        downloadUrl: portable.browser_download_url,
+        updatedAtMs: Date.parse(portable.updated_at || rel.published_at || '') || Date.now(),
+      });
+    }
+    return { version: ver, artifacts: out };
+  };
+
+  try {
+    const latestRes = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
+      headers: { Accept: 'application/vnd.github+json' },
+      cache: 'no-store',
+    });
+    if (latestRes.ok) {
+      const parsed = parseRelease(await latestRes.json());
+      if (parsed.artifacts.length > 0) return parsed;
+    }
+    const listRes = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=5`, {
+      headers: { Accept: 'application/vnd.github+json' },
+      cache: 'no-store',
+    });
+    if (listRes.ok) {
+      const list = (await listRes.json()) as Parameters<typeof parseRelease>[0][];
+      for (const rel of Array.isArray(list) ? list : []) {
+        if (rel.draft) continue;
+        const parsed = parseRelease(rel);
+        if (parsed.artifacts.length > 0) return parsed;
+      }
+    }
+  } catch {
+    // Ignore browser-side network error
+  }
+  return null;
+}
+
 export function DesktopDownloadView({ onBackHome, onOpenUpdates }: DesktopDownloadViewProps) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
@@ -93,13 +184,47 @@ export function DesktopDownloadView({ onBackHome, onOpenUpdates }: DesktopDownlo
 
   useEffect(() => {
     let active = true;
-    fetch('/api/desktop/info', { cache: 'no-store' })
+    const infoEndpoint = AUTO_GITHUB_REPO
+      ? `/api/desktop/info?repo=${encodeURIComponent(AUTO_GITHUB_REPO)}`
+      : '/api/desktop/info';
+
+    fetch(infoEndpoint, { cache: 'no-store' })
       .then((res) => (res.ok ? res.json() : null))
-      .then((data: DesktopInfoResponse | null) => {
+      .then(async (data: DesktopInfoResponse | null) => {
+        if (!active) return;
+        if (data && Array.isArray(data.artifacts) && data.artifacts.length > 0) {
+          setDesktopInfo(data);
+          return;
+        }
+        if (AUTO_GITHUB_REPO) {
+          const ghFallback = await fetchGithubReleasesBrowserFallback(AUTO_GITHUB_REPO);
+          if (active && ghFallback && ghFallback.artifacts.length > 0) {
+            setDesktopInfo({
+              appName: 'Paijo Clip',
+              version: ghFallback.version,
+              platform: 'win32-x64',
+              runtime: 'github-browser',
+              githubConfigured: true,
+              artifacts: ghFallback.artifacts,
+            });
+            return;
+          }
+        }
         if (active && data) setDesktopInfo(data);
       })
-      .catch(() => {
-        // Ignore transient fetch errors and fall back to pending/cloud state
+      .catch(async () => {
+        if (!active || !AUTO_GITHUB_REPO) return;
+        const ghFallback = await fetchGithubReleasesBrowserFallback(AUTO_GITHUB_REPO);
+        if (active && ghFallback && ghFallback.artifacts.length > 0) {
+          setDesktopInfo({
+            appName: 'Paijo Clip',
+            version: ghFallback.version,
+            platform: 'win32-x64',
+            runtime: 'github-browser',
+            githubConfigured: true,
+            artifacts: ghFallback.artifacts,
+          });
+        }
       })
       .finally(() => {
         if (active) setLoading(false);

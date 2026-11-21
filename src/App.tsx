@@ -242,11 +242,18 @@ export default function App() {
       }
     });
 
+    const autoRepo = String(
+      import.meta.env.VITE_AUTO_GITHUB_REPO || import.meta.env.VITE_DESKTOP_GITHUB_REPO || ''
+    ).trim();
+
     fetch('/api/app/check-update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       cache: 'no-store',
-      body: JSON.stringify({ clientVersion: CLIENT_APP_VERSION }),
+      body: JSON.stringify({
+        clientVersion: CLIENT_APP_VERSION,
+        githubRepo: autoRepo || undefined,
+      }),
     })
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { updateAvailable?: boolean; latestVersion?: string } | null) => {

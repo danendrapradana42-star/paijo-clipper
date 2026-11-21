@@ -384,13 +384,17 @@ export function UpdatesView({
           } catch {}
         }
 
+        const autoRepo = String(
+          import.meta.env.VITE_AUTO_GITHUB_REPO || import.meta.env.VITE_DESKTOP_GITHUB_REPO || ''
+        ).trim();
+
         const res = await fetch('/api/app/check-update', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           cache: 'no-store',
           body: JSON.stringify({
             clientVersion: CLIENT_APP_VERSION,
-            githubRepo: cleanRepo || undefined,
+            githubRepo: cleanRepo || autoRepo || undefined,
             packageUrl: !useGithub ? latestCloudPublished?.packageUrl || undefined : undefined,
           }),
         });
