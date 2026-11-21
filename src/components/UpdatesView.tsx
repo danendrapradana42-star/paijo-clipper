@@ -1,21 +1,30 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowUpCircle,
   CheckCircle2,
   Cloud,
   CloudUpload,
+  Download,
   ExternalLink,
+  FolderOpen,
   LogIn,
   LogOut,
   Pencil,
+  Play,
   RefreshCw,
   Rocket,
   RotateCcw,
+  Square,
   Trash2,
 } from 'lucide-react';
 import type { User } from 'firebase/auth';
 import { useTranslation } from '../i18n/LanguageContext';
+import {
+  downloadVerifiedChunkedExe,
+  formatFileSize,
+  type DesktopArtifactInfo,
+} from '../utils/desktopDownloader';
 import {
   DEVELOPER_ADMIN_EMAIL,
   compareVersions,
@@ -54,6 +63,7 @@ interface UpdateCheckResult {
   releaseNotes: string;
   releaseUrl: string | null;
   publishedAt: string | null;
+  artifacts?: DesktopArtifactInfo[];
   checkedAt: string;
 }
 
@@ -160,6 +170,16 @@ export function UpdatesView({
   const [confirmReload, setConfirmReload] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [checkResult, setCheckResult] = useState<UpdateCheckResult | null>(null);
+
+  const isRunningDesktop = typeof window !== 'undefined' && Boolean(window.paijoDesktop?.isDesktop);
+  const webDownloadAbortRef = useRef<AbortController | null>(null);
+  const [downloadingArtId, setDownloadingArtId] = useState<string | null>(null);
+  const [dlReceivedBytes, setDlReceivedBytes] = useState(0);
+  const [dlTotalBytes, setDlTotalBytes] = useState(0);
+  const [dlStage, setDlStage] = useState<'idle' | 'downloading' | 'verifying' | 'done' | 'error'>('idle');
+  const [dlFilename, setDlFilename] = useState('');
+  const [dlFilePath, setDlFilePath] = useState('');
+  const [dlError, setDlError] = useState('');
 
   // Firestore Cloud Updates State
   const [publishedReleases, setPublishedReleases] = useState<AppReleaseDoc[]>([]);
@@ -278,6 +298,37 @@ export function UpdatesView({
     loadServerVersion();
   }, [loadServerVersion]);
 
+  // Listen to native Electron update download progress events
+  useEffect(() => {
+    const unsub = window.paijoDesktop?.onUpdateDownloadProgress?.((prog) => {
+      if (prog.filename) setDlFilename(prog.filename);
+      if (prog.stage === 'downloading') {
+        setDlStage('downloading');
+        setDlReceivedBytes(prog.receivedBytes || 0);
+        setDlTotalBytes(prog.totalBytes || 0);
+      } else if (prog.stage === 'verifying') {
+        setDlStage('verifying');
+        setDlReceivedBytes(prog.receivedBytes || 0);
+        setDlTotalBytes(prog.totalBytes || 0);
+      } else if (prog.stage === 'done') {
+        setDlStage('done');
+        setDownloadingArtId(null);
+        if (prog.filePath) setDlFilePath(prog.filePath);
+      } else if (prog.stage === 'cancelled') {
+        setDlStage('idle');
+        setDownloadingArtId(null);
+      } else if (prog.stage === 'error') {
+        setDlStage('error');
+        setDownloadingArtId(null);
+        setDlError(prog.error || 'Gagal mengunduh update.');
+      }
+    });
+    return () => {
+      if (unsub) unsub();
+      webDownloadAbortRef.current?.abort();
+    };
+  }, []);
+
   // Subscribe to published updates in Firestore
   useEffect(() => {
     let unsub: (() => void) | undefined;
@@ -312,40 +363,139 @@ export function UpdatesView({
     };
   }, [isDeveloperAdmin]);
 
-  const handleCheckUpdates = async (useGithub = false) => {
-    setChecking(true);
-    setErrorMsg('');
-    try {
-      const cleanRepo = useGithub ? githubRepo.trim() : '';
-      if (useGithub && !cleanRepo) {
-        setErrorMsg('Masukkan nama repositori GitHub dengan format pemilik/nama-repo.');
-        return;
-      }
-      if (useGithub) {
-        try {
-          localStorage.setItem(REPO_STORAGE_KEY, cleanRepo);
-        } catch {}
-      }
+  const latestCloudPublished = publishedReleases[0] || null;
+  const cloudUpdateAvailable = Boolean(
+    latestCloudPublished && compareVersions(latestCloudPublished.version, CLIENT_APP_VERSION) > 0
+  );
 
-      const res = await fetch('/api/app/check-update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        cache: 'no-store',
-        body: JSON.stringify({
-          clientVersion: CLIENT_APP_VERSION,
-          githubRepo: cleanRepo || undefined,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Gagal memeriksa pembaruan aplikasi.');
+  const handleCheckUpdates = useCallback(
+    async (useGithub = false) => {
+      setChecking(true);
+      setErrorMsg('');
+      try {
+        const cleanRepo = useGithub ? githubRepo.trim() : '';
+        if (useGithub && !cleanRepo) {
+          setErrorMsg('Masukkan nama repositori GitHub dengan format pemilik/nama-repo.');
+          return;
+        }
+        if (useGithub) {
+          try {
+            localStorage.setItem(REPO_STORAGE_KEY, cleanRepo);
+          } catch {}
+        }
+
+        const res = await fetch('/api/app/check-update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          cache: 'no-store',
+          body: JSON.stringify({
+            clientVersion: CLIENT_APP_VERSION,
+            githubRepo: cleanRepo || undefined,
+            packageUrl: !useGithub ? latestCloudPublished?.packageUrl || undefined : undefined,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'Gagal memeriksa pembaruan aplikasi.');
+        }
+        setCheckResult(data as UpdateCheckResult);
+        await loadServerVersion();
+      } catch (err: unknown) {
+        setErrorMsg(err instanceof Error ? err.message : String(err));
+      } finally {
+        setChecking(false);
       }
-      setCheckResult(data as UpdateCheckResult);
-      await loadServerVersion();
-    } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : String(err));
+    },
+    [githubRepo, latestCloudPublished?.packageUrl, loadServerVersion]
+  );
+
+  // Auto-check for updates on mount and whenever cloud release packageUrl changes
+  useEffect(() => {
+    handleCheckUpdates(false);
+  }, [handleCheckUpdates]);
+
+  const handleCancelUpdateDownload = () => {
+    if (isRunningDesktop && window.paijoDesktop?.cancelUpdateDownload) {
+      window.paijoDesktop.cancelUpdateDownload();
+    }
+    webDownloadAbortRef.current?.abort();
+    webDownloadAbortRef.current = null;
+    setDownloadingArtId(null);
+    setDlStage('idle');
+    setDlReceivedBytes(0);
+    setDlTotalBytes(0);
+  };
+
+  const handleDownloadUpdateArtifact = async (artifact: DesktopArtifactInfo) => {
+    if (downloadingArtId) return;
+    setDlError('');
+    setDlFilePath('');
+    setDlFilename(artifact.filename);
+    setDlReceivedBytes(0);
+    setDlTotalBytes(artifact.sizeBytes || 0);
+    setDownloadingArtId(artifact.id);
+    setDlStage('downloading');
+
+    if (isRunningDesktop && window.paijoDesktop?.downloadUpdate) {
+      const res = await window.paijoDesktop.downloadUpdate({
+        url: artifact.downloadUrl,
+        filename: artifact.filename,
+        sha256: artifact.sha256,
+      });
+      if (!res.ok) {
+        if (!/dibatalkan/i.test(res.error || '')) {
+          setDlStage('error');
+          setDlError(res.error || 'Gagal mengunduh file update.');
+        } else {
+          setDlStage('idle');
+        }
+        setDownloadingArtId(null);
+      } else {
+        setDlStage('done');
+        if (res.filePath) setDlFilePath(res.filePath);
+        setDownloadingArtId(null);
+      }
+      return;
+    }
+
+    if (artifact.source === 'github' || (!artifact.sizeBytes && /^https?:\/\//i.test(artifact.downloadUrl))) {
+      const a = document.createElement('a');
+      a.href = artifact.downloadUrl;
+      a.download = artifact.filename;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setDownloadingArtId(null);
+      setDlStage('idle');
+      return;
+    }
+
+    const ctrl = new AbortController();
+    webDownloadAbortRef.current = ctrl;
+    try {
+      await downloadVerifiedChunkedExe(artifact, {
+        signal: ctrl.signal,
+        onProgress: (received, total, stage) => {
+          setDlReceivedBytes(received);
+          setDlTotalBytes(total);
+          setDlStage(stage);
+        },
+      });
+      setDlStage('done');
+    } catch (err) {
+      if ((err as { name?: string })?.name === 'AbortError' || ctrl.signal.aborted) {
+        setDlStage('idle');
+      } else {
+        setDlStage('error');
+        setDlError(err instanceof Error ? err.message : 'Gagal mengunduh pembaruan (.exe).');
+      }
     } finally {
-      setChecking(false);
+      if (webDownloadAbortRef.current === ctrl) {
+        webDownloadAbortRef.current = null;
+      }
+      setDownloadingArtId(null);
     }
   };
 
@@ -437,16 +587,67 @@ export function UpdatesView({
     }
   };
 
-  const latestCloudPublished = publishedReleases[0] || null;
-  const cloudUpdateAvailable = Boolean(
-    latestCloudPublished && compareVersions(latestCloudPublished.version, CLIENT_APP_VERSION) > 0
-  );
-
   const serverVersion = versionInfo?.version || CLIENT_APP_VERSION;
   const serverHasNewer =
     Boolean(checkResult?.updateAvailable) ||
     cloudUpdateAvailable ||
     (versionInfo?.version && compareVersions(versionInfo.version, CLIENT_APP_VERSION) > 0);
+
+  // Collect direct .exe update packages from server/GitHub check + Firestore published packageUrl
+  const updateExeArtifacts = useMemo(() => {
+    const out: DesktopArtifactInfo[] = [];
+    const seenUrls = new Set<string>();
+    const targetVer =
+      (latestCloudPublished && compareVersions(latestCloudPublished.version, CLIENT_APP_VERSION) > 0
+        ? latestCloudPublished.version
+        : checkResult?.latestVersion) || CLIENT_APP_VERSION;
+
+    const addArtifact = (art: DesktopArtifactInfo) => {
+      if (!art.downloadUrl || seenUrls.has(art.downloadUrl)) return;
+      seenUrls.add(art.downloadUrl);
+      out.push(art);
+    };
+
+    const serverArtifacts = checkResult?.artifacts || [];
+    for (const art of serverArtifacts) {
+      const artVer = art.version || checkResult?.latestVersion || CLIENT_APP_VERSION;
+      if (compareVersions(artVer, CLIENT_APP_VERSION) > 0 || checkResult?.updateAvailable) {
+        addArtifact(art);
+      }
+    }
+
+    const pkgUrl = latestCloudPublished?.packageUrl?.trim() || '';
+    if (
+      cloudUpdateAvailable &&
+      pkgUrl &&
+      /^https?:\/\//i.test(pkgUrl) &&
+      (/\.exe(\?|$)/i.test(pkgUrl) || /\/api\/desktop\/download\//i.test(pkgUrl))
+    ) {
+      const cleanName = (() => {
+        try {
+          const u = new URL(pkgUrl);
+          const base = decodeURIComponent(u.pathname.split('/').pop() || '');
+          if (/\.exe$/i.test(base)) return base;
+        } catch {}
+        return `Paijo-Clip-${targetVer}-Update-x64.exe`;
+      })();
+      addArtifact({
+        id: /portable/i.test(cleanName) ? 'portable-exe' : 'setup-exe',
+        kind: /portable/i.test(cleanName) ? 'portable' : 'installer',
+        source: 'firestore',
+        version: targetVer,
+        filename: cleanName,
+        sizeBytes: 0,
+        downloadUrl: pkgUrl,
+      });
+    }
+
+    return out;
+  }, [checkResult, cloudUpdateAvailable, latestCloudPublished]);
+
+  const dlProgressPct = dlTotalBytes > 0
+    ? Math.min(100, Math.round((dlReceivedBytes / dlTotalBytes) * 100))
+    : 0;
 
   return (
     <div className="space-y-6">
@@ -492,7 +693,7 @@ export function UpdatesView({
                   v{CLIENT_APP_VERSION}
                 </span>
                 <span className="text-xs font-semibold text-[#ff8224]">
-                  Paijo Clip
+                  Paijo Clip{isRunningDesktop ? ' Desktop' : ''}
                 </span>
               </div>
               {showDeveloperTools && (
@@ -517,21 +718,113 @@ export function UpdatesView({
               <RefreshCw className={`w-3.5 h-3.5 ${checking ? 'animate-spin' : ''}`} />
               {checking ? t('updates.checking') : t('updates.checkUpdates')}
             </button>
-            <button
-              type="button"
-              disabled={updating}
-              onClick={handleRequestUpdate}
-              className="px-4 py-2 rounded-lg bg-[#ff6b00] hover:bg-[#ff8224] disabled:opacity-40 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
-            >
-              <ArrowUpCircle className="w-3.5 h-3.5" />
-              {updating ? t('updates.updating') : t('updates.updateLatest')}
-            </button>
+
+            {isRunningDesktop && updateExeArtifacts.length > 0 ? (
+              <button
+                type="button"
+                disabled={Boolean(downloadingArtId)}
+                onClick={() => handleDownloadUpdateArtifact(updateExeArtifacts[0])}
+                className="px-4 py-2 rounded-lg bg-[#ff6b00] hover:bg-[#ff8224] disabled:opacity-40 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                {t('updates.downloadUpdateBtn', {
+                  version: `v${updateExeArtifacts[0].version || latestCloudPublished?.version || checkResult?.latestVersion || CLIENT_APP_VERSION}`,
+                  label: updateExeArtifacts[0].kind === 'installer' ? 'Setup' : 'Portable',
+                })}
+              </button>
+            ) : !isRunningDesktop ? (
+              <button
+                type="button"
+                disabled={updating}
+                onClick={handleRequestUpdate}
+                className="px-4 py-2 rounded-lg bg-[#ff6b00] hover:bg-[#ff8224] disabled:opacity-40 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <ArrowUpCircle className="w-3.5 h-3.5" />
+                {updating ? t('updates.updating') : t('updates.updateLatest')}
+              </button>
+            ) : null}
           </div>
         </div>
 
+        {/* Active In-App Update Download Progress / Ready State */}
+        {(downloadingArtId || dlStage === 'done' || (dlStage === 'error' && dlError)) && (
+          <div
+            className={`rounded-lg border p-3.5 space-y-2.5 ${
+              dlStage === 'error'
+                ? 'bg-red-950/35 border-red-500/50'
+                : dlStage === 'done'
+                  ? 'bg-[#171d12] border-[#c7ff55]/50'
+                  : 'bg-[#0c1733] border-[#ff6b00]/60'
+            }`}
+          >
+            {dlStage === 'error' ? (
+              <div className="flex items-start gap-2 text-xs text-red-200">
+                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                <span>{dlError}</span>
+              </div>
+            ) : dlStage === 'done' ? (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-xs font-semibold text-[#c7ff55]">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>{t('updates.downloadDone', { filename: dlFilename || 'Paijo-Clip-Update.exe' })}</span>
+                </div>
+                {isRunningDesktop && dlFilePath && (
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => window.paijoDesktop?.showItemInFolder?.(dlFilePath)}
+                      className="px-3 py-1.5 rounded-md bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-white inline-flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <FolderOpen className="w-3.5 h-3.5" />
+                      {t('updates.openFolderBtn')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => window.paijoDesktop?.openDownloadedUpdate?.(dlFilePath)}
+                      className="px-3.5 py-1.5 rounded-md bg-[#ff6b00] hover:bg-[#ff8224] text-xs font-bold text-white inline-flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      {t('updates.runInstallerBtn')}
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#e4ecfa]">
+                  <span className="font-semibold">
+                    {dlStage === 'verifying' ? t('updates.verifyingUpdate') : t('updates.downloadingUpdate')}
+                  </span>
+                  <div className="flex items-center gap-2.5">
+                    <span className="font-mono tabular-nums font-bold text-[#c7ff55]">
+                      {dlTotalBytes > 0
+                        ? `${dlProgressPct}% · ${formatFileSize(dlReceivedBytes)} / ${formatFileSize(dlTotalBytes)}`
+                        : formatFileSize(dlReceivedBytes)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleCancelUpdateDownload}
+                      className="px-2 py-1 rounded bg-[#16264d] hover:bg-red-950/60 border border-[#2a4173] text-[11px] font-semibold text-white inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      <Square className="w-3 h-3 fill-current text-[#ff6b00]" />
+                      {t('updates.cancel')}
+                    </button>
+                  </div>
+                </div>
+                <div className="h-2 bg-[#1a2d59] rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-[#ff6b00] transition-all duration-150"
+                    style={{ width: `${dlTotalBytes > 0 ? dlProgressPct : 45}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Cloud Published Update Alert */}
         {cloudUpdateAvailable && latestCloudPublished && (
-          <div className="bg-[#171d12] border border-[#c7ff55]/45 rounded-lg p-3.5 space-y-2">
+          <div className="bg-[#171d12] border border-[#c7ff55]/45 rounded-lg p-3.5 space-y-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-xs font-bold text-white">
                 <Rocket className="w-4 h-4 text-[#c7ff55]" />
@@ -557,14 +850,34 @@ export function UpdatesView({
               </ul>
             )}
             <div className="flex flex-wrap items-center gap-2 pt-1">
-              <button
-                type="button"
-                onClick={handleRequestUpdate}
-                className="px-3 py-1.5 rounded-md bg-[#c7ff55] hover:bg-[#d6ff7d] text-[#111507] text-xs font-bold cursor-pointer"
-              >
-                {t('updates.applyNow')}
-              </button>
-              {latestCloudPublished.packageUrl && (
+              {updateExeArtifacts.map((art) => (
+                <button
+                  key={`${art.id}-${art.downloadUrl}`}
+                  type="button"
+                  disabled={Boolean(downloadingArtId)}
+                  onClick={() => handleDownloadUpdateArtifact(art)}
+                  className="px-3.5 py-1.5 rounded-md bg-[#ff6b00] hover:bg-[#ff8224] disabled:opacity-45 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>
+                    {t('updates.downloadUpdateBtn', {
+                      version: `v${art.version || latestCloudPublished.version}`,
+                      label: art.kind === 'installer' ? 'Setup' : 'Portable',
+                    })}
+                    {art.sizeBytes > 0 ? ` · ${formatFileSize(art.sizeBytes)}` : ''}
+                  </span>
+                </button>
+              ))}
+              {!isRunningDesktop && (
+                <button
+                  type="button"
+                  onClick={handleRequestUpdate}
+                  className="px-3 py-1.5 rounded-md bg-[#c7ff55] hover:bg-[#d6ff7d] text-[#111507] text-xs font-bold cursor-pointer"
+                >
+                  {t('updates.applyNow')}
+                </button>
+              )}
+              {latestCloudPublished.packageUrl && updateExeArtifacts.length === 0 && (
                 <a
                   href={latestCloudPublished.packageUrl}
                   target="_blank"
@@ -652,7 +965,25 @@ export function UpdatesView({
             )}
 
             <div className="flex flex-wrap items-center gap-2">
-              {checkResult.updateAvailable && checkResult.source === 'server' && (
+              {checkResult.updateAvailable && updateExeArtifacts.map((art) => (
+                <button
+                  key={`chk-${art.id}-${art.downloadUrl}`}
+                  type="button"
+                  disabled={Boolean(downloadingArtId)}
+                  onClick={() => handleDownloadUpdateArtifact(art)}
+                  className="px-3.5 py-1.5 rounded-md bg-[#ff6b00] hover:bg-[#ff8224] disabled:opacity-45 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>
+                    {t('updates.downloadUpdateBtn', {
+                      version: `v${art.version || checkResult.latestVersion}`,
+                      label: art.kind === 'installer' ? 'Setup' : 'Portable',
+                    })}
+                    {art.sizeBytes > 0 ? ` · ${formatFileSize(art.sizeBytes)}` : ''}
+                  </span>
+                </button>
+              ))}
+              {!isRunningDesktop && checkResult.updateAvailable && checkResult.source === 'server' && (
                 <button
                   type="button"
                   onClick={handleRequestUpdate}

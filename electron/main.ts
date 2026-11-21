@@ -10,6 +10,7 @@ import {
 } from 'electron';
 import dotenv from 'dotenv';
 import express from 'express';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
@@ -17,7 +18,9 @@ import { createApiApp } from '../server/apiApp';
 
 let mainWindow: BrowserWindow | null = null;
 let localServer: http.Server | null = null;
+let localServerOrigin = 'http://127.0.0.1:3000';
 let renderBlockerId: number | null = null;
+let activeUpdateDownloadCtrl: AbortController | null = null;
 
 // Prevent Chromium from throttling 30fps canvas/WebCodecs video renders in background
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
@@ -52,6 +55,7 @@ function loadDesktopEnv(appRoot: string): void {
 async function startEmbeddedServer(appRoot: string): Promise<string> {
   const devUrl = process.env.ELECTRON_START_URL;
   if (devUrl) {
+    localServerOrigin = devUrl;
     return devUrl;
   }
 
@@ -83,7 +87,8 @@ async function startEmbeddedServer(appRoot: string): Promise<string> {
 
   const addr = localServer.address();
   const port = typeof addr === 'object' && addr ? addr.port : 3000;
-  return `http://localhost:${port}`;
+  localServerOrigin = `http://localhost:${port}`;
+  return localServerOrigin;
 }
 
 function configureSessionPermissions(): void {
@@ -238,6 +243,257 @@ ipcMain.on('paijo:set-render-active', (_event, active: boolean) => {
     renderBlockerId = null;
   }
 });
+
+function emitUpdateProgress(payload: {
+  stage: 'downloading' | 'verifying' | 'done' | 'error' | 'cancelled';
+  receivedBytes: number;
+  totalBytes: number;
+  filename?: string;
+  filePath?: string;
+  error?: string;
+}) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('paijo:download-update-progress', payload);
+  }
+}
+
+ipcMain.on('paijo:cancel-update-download', () => {
+  activeUpdateDownloadCtrl?.abort();
+});
+
+ipcMain.handle('paijo:open-downloaded-update', async (_event, filePath: string) => {
+  if (!filePath || !fs.existsSync(filePath)) {
+    return 'File update tidak ditemukan.';
+  }
+  return shell.openPath(filePath);
+});
+
+ipcMain.handle('paijo:show-item-in-folder', async (_event, filePath: string) => {
+  if (filePath && fs.existsSync(filePath)) {
+    shell.showItemInFolder(filePath);
+    return true;
+  }
+  return false;
+});
+
+ipcMain.handle(
+  'paijo:download-update',
+  async (
+    _event,
+    payload: { url: string; filename?: string; sha256?: string }
+  ): Promise<{ ok: boolean; filePath?: string; filename?: string; bytes?: number; error?: string }> => {
+    if (activeUpdateDownloadCtrl) {
+      return { ok: false, error: 'Unduhan pembaruan lain sedang berlangsung.' };
+    }
+
+    const ctrl = new AbortController();
+    activeUpdateDownloadCtrl = ctrl;
+
+    let tempPath = '';
+    try {
+      const rawUrl = String(payload?.url || '').trim();
+      const targetUrl = rawUrl.startsWith('/') ? new URL(rawUrl, localServerOrigin).toString() : rawUrl;
+      const parsed = new URL(targetUrl);
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+        throw new Error('URL unduhan update tidak valid.');
+      }
+
+      const rawName =
+        payload?.filename ||
+        decodeURIComponent(path.basename(parsed.pathname) || 'Paijo-Clip-Update.exe');
+      const safeFilename = (rawName.replace(/[\\/:*?"<>|]/g, '-') || 'Paijo-Clip-Update.exe').slice(0, 120);
+      const downloadsDir = app.getPath('downloads');
+      await fs.promises.mkdir(downloadsDir, { recursive: true });
+      const finalPath = path.join(downloadsDir, safeFilename);
+      tempPath = `${finalPath}.part-${Date.now()}`;
+
+      // Probe size and Range capability via HEAD (fall back gracefully if HEAD blocked)
+      let totalSize = 0;
+      let supportsRange = false;
+      let serverSha256 = String(payload?.sha256 || '').trim().toLowerCase();
+
+      try {
+        const headRes = await fetch(targetUrl, {
+          method: 'HEAD',
+          redirect: 'follow',
+          headers: { 'User-Agent': 'PaijoClip-Desktop-Updater' },
+          signal: ctrl.signal,
+        });
+        if (headRes.ok) {
+          totalSize = Number(headRes.headers.get('content-length') || '0') || 0;
+          supportsRange = /bytes/i.test(headRes.headers.get('accept-ranges') || '');
+          const hdrSha = headRes.headers.get('x-artifact-sha256');
+          if (hdrSha && !serverSha256) serverSha256 = hdrSha.trim().toLowerCase();
+        }
+      } catch {
+        // Ignore HEAD failures; proceed with GET
+      }
+
+      const writeStream = fs.createWriteStream(tempPath);
+      const shaHash = crypto.createHash('sha256');
+      let receivedBytes = 0;
+      let headerBytes = Buffer.alloc(0);
+
+      const writeChunk = async (buf: Buffer) => {
+        if (headerBytes.length < 2) {
+          headerBytes = Buffer.concat([headerBytes, buf.subarray(0, 2 - headerBytes.length)]);
+        }
+        shaHash.update(buf);
+        receivedBytes += buf.length;
+        if (!writeStream.write(buf)) {
+          await new Promise<void>((resolve, reject) => {
+            writeStream.once('drain', resolve);
+            writeStream.once('error', reject);
+          });
+        }
+        emitUpdateProgress({
+          stage: 'downloading',
+          receivedBytes,
+          totalBytes: totalSize,
+          filename: safeFilename,
+        });
+      };
+
+      try {
+        const CHUNK = 8 * 1024 * 1024;
+        if (supportsRange && totalSize > CHUNK) {
+          let offset = 0;
+          while (offset < totalSize) {
+            if (ctrl.signal.aborted) throw new Error('Unduhan dibatalkan.');
+            const end = Math.min(totalSize - 1, offset + CHUNK - 1);
+            const expectedLen = end - offset + 1;
+            let chunkBuf: Buffer | null = null;
+            let lastErr: unknown = null;
+
+            for (let attempt = 0; attempt < 3; attempt++) {
+              try {
+                const res = await fetch(targetUrl, {
+                  method: 'GET',
+                  redirect: 'follow',
+                  headers: {
+                    Range: `bytes=${offset}-${end}`,
+                    'User-Agent': 'PaijoClip-Desktop-Updater',
+                  },
+                  signal: ctrl.signal,
+                });
+                if (res.status !== 206 && res.status !== 200) {
+                  throw new Error(`HTTP ${res.status}`);
+                }
+                const arr = await res.arrayBuffer();
+                const buf = Buffer.from(arr);
+                if (res.status === 200 && totalSize > CHUNK && buf.length === totalSize) {
+                  chunkBuf = buf;
+                  offset = totalSize - expectedLen;
+                  break;
+                }
+                if (buf.length !== expectedLen) {
+                  throw new Error(`Ukuran bagian tidak lengkap (${buf.length}/${expectedLen})`);
+                }
+                chunkBuf = buf;
+                break;
+              } catch (err) {
+                if (ctrl.signal.aborted) throw err;
+                lastErr = err;
+                await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+              }
+            }
+
+            if (!chunkBuf) {
+              throw lastErr instanceof Error ? lastErr : new Error('Gagal mengunduh paket update.');
+            }
+            await writeChunk(chunkBuf);
+            offset += expectedLen;
+          }
+        } else {
+          const res = await fetch(targetUrl, {
+            method: 'GET',
+            redirect: 'follow',
+            headers: { 'User-Agent': 'PaijoClip-Desktop-Updater' },
+            signal: ctrl.signal,
+          });
+          if (!res.ok) {
+            throw new Error(`Server mengembalikan HTTP ${res.status}`);
+          }
+          const hdrLen = Number(res.headers.get('content-length') || '0') || 0;
+          if (hdrLen > 0) totalSize = hdrLen;
+          const hdrSha = res.headers.get('x-artifact-sha256');
+          if (hdrSha && !serverSha256) serverSha256 = hdrSha.trim().toLowerCase();
+
+          if (!res.body) {
+            const buf = Buffer.from(await res.arrayBuffer());
+            await writeChunk(buf);
+          } else {
+            const reader = res.body.getReader();
+            while (true) {
+              if (ctrl.signal.aborted) {
+                await reader.cancel().catch(() => {});
+                throw new Error('Unduhan dibatalkan.');
+              }
+              const { done, value } = await reader.read();
+              if (done) break;
+              if (value && value.length > 0) {
+                await writeChunk(Buffer.from(value));
+              }
+            }
+          }
+        }
+      } finally {
+        await new Promise<void>((resolve) => writeStream.end(() => resolve()));
+      }
+
+      emitUpdateProgress({
+        stage: 'verifying',
+        receivedBytes,
+        totalBytes: totalSize || receivedBytes,
+        filename: safeFilename,
+      });
+
+      if (totalSize > 0 && receivedBytes !== totalSize) {
+        throw new Error(`Ukuran file update tidak lengkap (${receivedBytes}/${totalSize} byte).`);
+      }
+      if (/\.exe$/i.test(safeFilename) && (headerBytes.length < 2 || headerBytes[0] !== 0x4d || headerBytes[1] !== 0x5a)) {
+        throw new Error('File yang diunduh bukan executable Windows (.exe) yang valid.');
+      }
+      if (serverSha256) {
+        const actualSha = shaHash.digest('hex').toLowerCase();
+        if (actualSha !== serverSha256) {
+          throw new Error('Verifikasi checksum SHA-256 update gagal.');
+        }
+      }
+
+      await fs.promises.rm(finalPath, { force: true }).catch(() => {});
+      await fs.promises.rename(tempPath, finalPath);
+      tempPath = '';
+
+      emitUpdateProgress({
+        stage: 'done',
+        receivedBytes,
+        totalBytes: receivedBytes,
+        filename: safeFilename,
+        filePath: finalPath,
+      });
+
+      return { ok: true, filePath: finalPath, filename: safeFilename, bytes: receivedBytes };
+    } catch (err) {
+      if (tempPath) {
+        await fs.promises.rm(tempPath, { force: true }).catch(() => {});
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+      const cancelled = ctrl.signal.aborted || /dibatalkan/i.test(msg);
+      emitUpdateProgress({
+        stage: cancelled ? 'cancelled' : 'error',
+        receivedBytes: 0,
+        totalBytes: 0,
+        error: cancelled ? undefined : msg,
+      });
+      return { ok: false, error: msg };
+    } finally {
+      if (activeUpdateDownloadCtrl === ctrl) {
+        activeUpdateDownloadCtrl = null;
+      }
+    }
+  }
+);
 
 process.on('uncaughtException', (err) => {
   console.error('Paijo Clip uncaught exception:', err);

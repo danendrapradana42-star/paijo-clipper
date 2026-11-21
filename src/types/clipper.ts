@@ -121,10 +121,30 @@ export interface YoutubePreviewInfo {
 export type AppView = 'home' | 'aivideo' | 'studio' | 'exports' | 'download' | 'updates';
 export type StudioTab = 'clips' | 'style' | 'export';
 
+export interface PaijoUpdateDownloadProgress {
+  stage: 'downloading' | 'verifying' | 'done' | 'error' | 'cancelled';
+  receivedBytes: number;
+  totalBytes: number;
+  filename?: string;
+  filePath?: string;
+  error?: string;
+}
+
 export interface PaijoDesktopBridge {
   isDesktop: boolean;
   platform: string;
   setRenderActive?: (active: boolean) => void;
+  downloadUpdate?: (payload: {
+    url: string;
+    filename?: string;
+    sha256?: string;
+  }) => Promise<{ ok: boolean; filePath?: string; filename?: string; bytes?: number; error?: string }>;
+  cancelUpdateDownload?: () => void;
+  onUpdateDownloadProgress?: (
+    cb: (progress: PaijoUpdateDownloadProgress) => void
+  ) => () => void;
+  openDownloadedUpdate?: (filePath: string) => Promise<string>;
+  showItemInFolder?: (filePath: string) => Promise<boolean>;
 }
 
 declare global {

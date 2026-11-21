@@ -49,6 +49,7 @@ import {
   signOutFirebase,
   testFirestoreConnection,
 } from './utils/firebase';
+import { compareVersions, subscribePublishedReleases } from './utils/firestoreSync';
 import {
   cleanCues,
   cuesToPreviewText,
@@ -141,9 +142,12 @@ export default function App() {
   const batchStopRef = useRef(false);
   const ytInspectTimerRef = useRef<number>(0);
 
+  const isRunningDesktop = typeof window !== 'undefined' && Boolean(window.paijoDesktop?.isDesktop);
+
   const [view, setView] = useState<AppView>('home');
   const [studioTab, setStudioTab] = useState<StudioTab>('clips');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [availableUpdateVer, setAvailableUpdateVer] = useState<string | null>(null);
 
   // Media & Analysis State
   const [activeFile, setActiveFile] = useState<File | null>(null);
@@ -228,8 +232,44 @@ export default function App() {
         setAuthError('');
       }
     });
-    return () => unsubAuth();
+
+    const unsubReleases = subscribePublishedReleases((list) => {
+      const latest = list[0];
+      if (latest && compareVersions(latest.version, CLIENT_APP_VERSION) > 0) {
+        setAvailableUpdateVer(latest.version);
+      } else {
+        setAvailableUpdateVer(null);
+      }
+    });
+
+    fetch('/api/app/check-update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ clientVersion: CLIENT_APP_VERSION }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { updateAvailable?: boolean; latestVersion?: string } | null) => {
+        if (data?.updateAvailable && data.latestVersion) {
+          setAvailableUpdateVer((prev) =>
+            prev && compareVersions(prev, data.latestVersion!) >= 0 ? prev : data.latestVersion!
+          );
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      unsubAuth();
+      unsubReleases();
+    };
   }, []);
+
+  // Desktop (.exe) must never stay on web-only Download App view
+  useEffect(() => {
+    if (isRunningDesktop && view === 'download') {
+      setView('home');
+    }
+  }, [isRunningDesktop, view]);
 
   // Persist Studio Preferences locally
   useEffect(() => {
@@ -1239,22 +1279,24 @@ export default function App() {
               </span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setView('download');
-                setMobileMenuOpen(false);
-              }}
-              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13px] font-semibold transition-colors cursor-pointer ${
-                view === 'download'
-                  ? 'bg-[#16264d] text-white border border-[#2a4173]'
-                  : 'text-[#93a7cc] hover:bg-[#101d3d] hover:text-white border border-transparent'
-              }`}
-            >
-              <MonitorDown className={`w-4 h-4 shrink-0 ${view === 'download' ? 'text-[#ff6b00]' : ''}`} />
-              <span className="truncate">{t('nav.downloadApp')}</span>
-              <span className="ml-auto font-mono text-[11px] text-[#ff8224]">.exe</span>
-            </button>
+            {!isRunningDesktop && (
+              <button
+                type="button"
+                onClick={() => {
+                  setView('download');
+                  setMobileMenuOpen(false);
+                }}
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13px] font-semibold transition-colors cursor-pointer ${
+                  view === 'download'
+                    ? 'bg-[#16264d] text-white border border-[#2a4173]'
+                    : 'text-[#93a7cc] hover:bg-[#101d3d] hover:text-white border border-transparent'
+                }`}
+              >
+                <MonitorDown className={`w-4 h-4 shrink-0 ${view === 'download' ? 'text-[#ff6b00]' : ''}`} />
+                <span className="truncate">{t('nav.downloadApp')}</span>
+                <span className="ml-auto font-mono text-[11px] text-[#ff8224]">.exe</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -1270,9 +1312,15 @@ export default function App() {
             >
               <RefreshCw className={`w-4 h-4 shrink-0 ${view === 'updates' ? 'text-[#ff6b00]' : ''}`} />
               <span className="truncate">{t('nav.updates')}</span>
-              <span className="ml-auto font-mono tabular-nums text-[11px] text-[#93a7cc]">
-                v{CLIENT_APP_VERSION}
-              </span>
+              {availableUpdateVer ? (
+                <span className="ml-auto font-mono tabular-nums text-[11px] font-bold text-[#c7ff55]">
+                  v{availableUpdateVer}
+                </span>
+              ) : (
+                <span className="ml-auto font-mono tabular-nums text-[11px] text-[#93a7cc]">
+                  v{CLIENT_APP_VERSION}
+                </span>
+              )}
             </button>
           </nav>
 
@@ -1661,7 +1709,7 @@ export default function App() {
               />
             )}
 
-            {view === 'download' && (
+            {view === 'download' && !isRunningDesktop && (
               <DesktopDownloadView
                 onBackHome={() => setView('home')}
                 onOpenUpdates={() => setView('updates')}

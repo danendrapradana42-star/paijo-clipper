@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
+import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { GoogleGenAI, Type } from '@google/genai';
@@ -208,82 +209,6 @@ export function createApiApp(): express.Express {
     });
   });
 
-  app.post('/api/app/check-update', async (req, res) => {
-    const currentVersion = readAppPackageVersion();
-    const clientVersion = String(req.body?.clientVersion || currentVersion).trim();
-    const githubRepo = String(req.body?.githubRepo || '').trim();
-
-    if (githubRepo) {
-      if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(githubRepo)) {
-        res.status(400).json({ error: 'Format repositori GitHub harus "pemilik/nama-repo".' });
-        return;
-      }
-
-      try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 7000);
-        const ghRes = await fetch(`https://api.github.com/repos/${githubRepo}/releases/latest`, {
-          headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'PaijoClip-Studio' },
-          signal: controller.signal,
-        });
-        clearTimeout(timer);
-
-        if (ghRes.ok) {
-          const data = (await ghRes.json()) as {
-            tag_name?: string;
-            name?: string;
-            body?: string;
-            html_url?: string;
-            published_at?: string;
-          };
-          const latestVersion = String(data.tag_name || data.name || currentVersion).replace(/^v/i, '');
-          const updateAvailable = compareSemver(latestVersion, clientVersion) > 0;
-          res.json({
-            source: 'github',
-            repo: githubRepo,
-            clientVersion,
-            serverVersion: currentVersion,
-            latestVersion,
-            updateAvailable,
-            releaseName: data.name || `v${latestVersion}`,
-            releaseNotes: String(data.body || '').slice(0, 1200),
-            releaseUrl: data.html_url || `https://github.com/${githubRepo}/releases`,
-            publishedAt: data.published_at || null,
-            checkedAt: new Date().toISOString(),
-          });
-          return;
-        }
-
-        if (ghRes.status === 404) {
-          res.status(404).json({
-            error: `Rilis resmi tidak ditemukan pada repositori "${githubRepo}".`,
-          });
-          return;
-        }
-        res.status(502).json({ error: `GitHub API merespons status ${ghRes.status}.` });
-        return;
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        res.status(502).json({ error: `Gagal menghubungi GitHub Releases: ${msg}` });
-        return;
-      }
-    }
-
-    const serverAhead = compareSemver(currentVersion, clientVersion) > 0;
-    res.json({
-      source: 'server',
-      clientVersion,
-      serverVersion: currentVersion,
-      latestVersion: currentVersion,
-      updateAvailable: serverAhead,
-      releaseName: `Paijo Clip v${currentVersion}`,
-      releaseNotes: '',
-      releaseUrl: null,
-      publishedAt: serverStartedAt,
-      checkedAt: new Date().toISOString(),
-    });
-  });
-
   interface DesktopArtifactEntry {
     id: 'setup-exe' | 'portable-exe';
     kind: 'installer' | 'portable';
@@ -291,14 +216,53 @@ export function createApiApp(): express.Express {
     version: string;
     filename: string;
     sizeBytes: number;
+    sha256?: string;
     downloadUrl: string;
     fullPath?: string;
     updatedAtMs: number;
   }
 
+  const localShaCache = new Map<string, { size: number; mtimeMs: number; sha256: string }>();
+  async function getLocalFileSha256(fullPath: string, size: number, mtimeMs: number): Promise<string> {
+    const cached = localShaCache.get(fullPath);
+    if (cached && cached.size === size && cached.mtimeMs === mtimeMs) {
+      return cached.sha256;
+    }
+    const sha256 = await new Promise<string>((resolve, reject) => {
+      const hash = crypto.createHash('sha256');
+      const stream = fs.createReadStream(fullPath);
+      stream.on('data', (chunk) => hash.update(chunk));
+      stream.on('end', () => resolve(hash.digest('hex')));
+      stream.on('error', reject);
+    });
+    localShaCache.set(fullPath, { size, mtimeMs, sha256 });
+    return sha256;
+  }
+
+  function extractGithubRepoFromUrl(raw: string): string {
+    const clean = String(raw || '').trim();
+    if (!clean) return '';
+    if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(clean)) return clean;
+    try {
+      const u = new URL(clean);
+      if (u.hostname.replace(/^www\./, '').toLowerCase() === 'github.com') {
+        const parts = u.pathname.split('/').filter(Boolean);
+        if (parts.length >= 2) {
+          const candidate = `${parts[0]}/${parts[1]}`.replace(/\.git$/i, '');
+          if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(candidate)) {
+            return candidate;
+          }
+        }
+      }
+    } catch {
+      // Ignore malformed URLs
+    }
+    return '';
+  }
+
   function resolveDesktopGithubRepo(overrideRepo?: string): string {
     const candidates = [
-      overrideRepo || '',
+      extractGithubRepoFromUrl(overrideRepo || ''),
       process.env.DESKTOP_GITHUB_REPO || '',
       process.env.VITE_DESKTOP_GITHUB_REPO || '',
       process.env.VERCEL_GIT_REPO_OWNER && process.env.VERCEL_GIT_REPO_SLUG
@@ -369,17 +333,38 @@ export function createApiApp(): express.Express {
 
   const githubReleaseCache = new Map<
     string,
-    { expiresAt: number; version: string; artifacts: DesktopArtifactEntry[] }
+    {
+      expiresAt: number;
+      version: string;
+      releaseName: string;
+      releaseNotes: string;
+      releaseUrl: string | null;
+      publishedAt: string | null;
+      artifacts: DesktopArtifactEntry[];
+    }
   >();
 
   async function fetchGithubDesktopArtifacts(repo: string): Promise<{
     version: string;
+    releaseName: string;
+    releaseNotes: string;
+    releaseUrl: string | null;
+    publishedAt: string | null;
     artifacts: DesktopArtifactEntry[];
   }> {
-    if (!repo) return { version: readAppPackageVersion(), artifacts: [] };
+    if (!repo) {
+      return {
+        version: readAppPackageVersion(),
+        releaseName: `Paijo Clip v${readAppPackageVersion()}`,
+        releaseNotes: '',
+        releaseUrl: null,
+        publishedAt: null,
+        artifacts: [],
+      };
+    }
     const cached = githubReleaseCache.get(repo);
     if (cached && cached.expiresAt > Date.now()) {
-      return { version: cached.version, artifacts: cached.artifacts };
+      return cached;
     }
 
     const headers: Record<string, string> = {
@@ -394,6 +379,8 @@ export function createApiApp(): express.Express {
     const extractExeFromRelease = (rel: {
       tag_name?: string;
       name?: string;
+      body?: string;
+      html_url?: string;
       published_at?: string;
       draft?: boolean;
       assets?: Array<{
@@ -402,11 +389,12 @@ export function createApiApp(): express.Express {
         browser_download_url?: string;
         updated_at?: string;
       }>;
-    }): { version: string; artifacts: DesktopArtifactEntry[] } => {
+    }) => {
       const assets = Array.isArray(rel.assets) ? rel.assets : [];
-      const ver = String(rel.tag_name || rel.name || readAppPackageVersion())
-        .replace(/^v/i, '')
-        .trim() || readAppPackageVersion();
+      const ver =
+        String(rel.tag_name || rel.name || readAppPackageVersion())
+          .replace(/^v/i, '')
+          .trim() || readAppPackageVersion();
 
       const validExeAssets = assets.filter(
         (a) =>
@@ -446,7 +434,14 @@ export function createApiApp(): express.Express {
           updatedAtMs: Date.parse(portableAsset.updated_at || rel.published_at || '') || Date.now(),
         });
       }
-      return { version: ver, artifacts: out };
+      return {
+        version: ver,
+        releaseName: rel.name || `v${ver}`,
+        releaseNotes: String(rel.body || '').slice(0, 1200),
+        releaseUrl: rel.html_url || `https://github.com/${repo}/releases`,
+        publishedAt: rel.published_at || null,
+        artifacts: out,
+      };
     };
 
     try {
@@ -458,16 +453,19 @@ export function createApiApp(): express.Express {
       });
       clearTimeout(timer);
 
-      let parsed: { version: string; artifacts: DesktopArtifactEntry[] } = {
+      let parsed = {
         version: readAppPackageVersion(),
-        artifacts: [],
+        releaseName: `Paijo Clip v${readAppPackageVersion()}`,
+        releaseNotes: '',
+        releaseUrl: null as string | null,
+        publishedAt: null as string | null,
+        artifacts: [] as DesktopArtifactEntry[],
       };
 
       if (latestRes.ok) {
         parsed = extractExeFromRelease(await latestRes.json());
       }
 
-      // If /releases/latest didn't exist or lacked .exe assets, inspect recent releases
       if (parsed.artifacts.length === 0) {
         const listController = new AbortController();
         const listTimer = setTimeout(() => listController.abort(), 6000);
@@ -481,6 +479,8 @@ export function createApiApp(): express.Express {
           const list = (await listRes.json()) as Array<{
             tag_name?: string;
             name?: string;
+            body?: string;
+            html_url?: string;
             published_at?: string;
             draft?: boolean;
             assets?: Array<{
@@ -493,9 +493,9 @@ export function createApiApp(): express.Express {
           for (const rel of Array.isArray(list) ? list : []) {
             if (rel.draft) continue;
             const candidate = extractExeFromRelease(rel);
-            if (candidate.artifacts.length > 0) {
+            if (candidate.artifacts.length > 0 || !parsed.releaseUrl) {
               parsed = candidate;
-              break;
+              if (candidate.artifacts.length > 0) break;
             }
           }
         }
@@ -503,17 +503,23 @@ export function createApiApp(): express.Express {
 
       githubReleaseCache.set(repo, {
         expiresAt: Date.now() + (parsed.artifacts.length > 0 ? 5 * 60 * 1000 : 60 * 1000),
-        version: parsed.version,
-        artifacts: parsed.artifacts,
+        ...parsed,
       });
       return parsed;
     } catch {
+      const fallback = {
+        version: readAppPackageVersion(),
+        releaseName: `Paijo Clip v${readAppPackageVersion()}`,
+        releaseNotes: '',
+        releaseUrl: null,
+        publishedAt: null,
+        artifacts: [] as DesktopArtifactEntry[],
+      };
       githubReleaseCache.set(repo, {
         expiresAt: Date.now() + 30 * 1000,
-        version: readAppPackageVersion(),
-        artifacts: [],
+        ...fallback,
       });
-      return { version: readAppPackageVersion(), artifacts: [] };
+      return fallback;
     }
   }
 
@@ -549,10 +555,135 @@ export function createApiApp(): express.Express {
     };
   }
 
+  async function serializePublicArtifacts(artifacts: DesktopArtifactEntry[]) {
+    return Promise.all(
+      artifacts.map(async ({ fullPath, ...pub }) => {
+        if (pub.source === 'local' && fullPath && fs.existsSync(fullPath)) {
+          try {
+            const st = fs.statSync(fullPath);
+            const sha256 = await getLocalFileSha256(fullPath, st.size, Math.round(st.mtimeMs));
+            return { ...pub, sha256 };
+          } catch {
+            return pub;
+          }
+        }
+        return pub;
+      })
+    );
+  }
+
+  app.post('/api/app/check-update', async (req, res) => {
+    const currentVersion = readAppPackageVersion();
+    const clientVersion = String(req.body?.clientVersion || currentVersion).trim();
+    const explicitRepo = String(req.body?.githubRepo || '').trim();
+    const packageUrlHint = String(req.body?.packageUrl || '').trim();
+
+    if (explicitRepo && !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(explicitRepo)) {
+      res.status(400).json({ error: 'Format repositori GitHub harus "pemilik/nama-repo".' });
+      return;
+    }
+
+    const effectiveRepo = resolveDesktopGithubRepo(explicitRepo || packageUrlHint);
+
+    if (effectiveRepo) {
+      const gh = await fetchGithubDesktopArtifacts(effectiveRepo);
+      if (gh.releaseUrl || gh.artifacts.length > 0) {
+        const updateAvailable = compareSemver(gh.version, clientVersion) > 0;
+        res.json({
+          source: 'github',
+          repo: effectiveRepo,
+          clientVersion,
+          serverVersion: currentVersion,
+          latestVersion: gh.version,
+          updateAvailable,
+          releaseName: gh.releaseName,
+          releaseNotes: gh.releaseNotes,
+          releaseUrl: gh.releaseUrl,
+          publishedAt: gh.publishedAt,
+          artifacts: await serializePublicArtifacts(gh.artifacts),
+          checkedAt: new Date().toISOString(),
+        });
+        return;
+      }
+      if (explicitRepo) {
+        res.status(404).json({
+          error: `Rilis resmi tidak ditemukan pada repositori "${explicitRepo}".`,
+        });
+        return;
+      }
+    }
+
+    const merged = await resolveMergedDesktopArtifacts(effectiveRepo || undefined);
+    let resolvedArtifacts = await serializePublicArtifacts(merged.artifacts);
+    let latestServerVer =
+      compareSemver(merged.version, currentVersion) > 0 ? merged.version : currentVersion;
+
+    const remoteOriginCandidate = packageUrlHint || process.env.PAIJO_WEB_ORIGIN || '';
+    if (
+      resolvedArtifacts.length === 0 &&
+      remoteOriginCandidate &&
+      /^https:\/\//i.test(remoteOriginCandidate) &&
+      !/\.exe(\?|$)/i.test(remoteOriginCandidate)
+    ) {
+      try {
+        const u = new URL(remoteOriginCandidate);
+        const host = u.hostname.toLowerCase();
+        const isLocalOrGithub =
+          host === 'localhost' ||
+          host === '127.0.0.1' ||
+          host === '0.0.0.0' ||
+          host.endsWith('.local') ||
+          host === 'github.com';
+        if (!isLocalOrGithub) {
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), 5000);
+          const remoteRes = await fetch(`${u.origin}/api/desktop/info`, {
+            headers: { Accept: 'application/json', 'User-Agent': 'PaijoClip-Desktop-Updater' },
+            signal: ctrl.signal,
+          });
+          clearTimeout(timer);
+          if (remoteRes.ok) {
+            const remoteData = (await remoteRes.json()) as {
+              version?: string;
+              artifacts?: DesktopArtifactEntry[];
+            };
+            if (Array.isArray(remoteData.artifacts) && remoteData.artifacts.length > 0) {
+              resolvedArtifacts = remoteData.artifacts.map((a) => ({
+                ...a,
+                downloadUrl: a.downloadUrl.startsWith('/') ? `${u.origin}${a.downloadUrl}` : a.downloadUrl,
+              }));
+            }
+            if (remoteData.version && compareSemver(remoteData.version, latestServerVer) > 0) {
+              latestServerVer = remoteData.version;
+            }
+          }
+        }
+      } catch {
+        // Non-fatal; keep local check result
+      }
+    }
+
+    const serverAhead = compareSemver(latestServerVer, clientVersion) > 0;
+
+    res.json({
+      source: 'server',
+      clientVersion,
+      serverVersion: currentVersion,
+      latestVersion: latestServerVer,
+      updateAvailable: serverAhead,
+      releaseName: `Paijo Clip v${latestServerVer}`,
+      releaseNotes: '',
+      releaseUrl: null,
+      publishedAt: serverStartedAt,
+      artifacts: resolvedArtifacts,
+      checkedAt: new Date().toISOString(),
+    });
+  });
+
   app.get('/api/desktop/info', async (req, res) => {
     const repoOverride = typeof req.query.repo === 'string' ? req.query.repo : undefined;
     const resolved = await resolveMergedDesktopArtifacts(repoOverride);
-    const publicArtifacts = resolved.artifacts.map(({ fullPath: _fp, ...pub }) => pub);
+    const publicArtifacts = await serializePublicArtifacts(resolved.artifacts);
     res.json({
       appName: 'Paijo Clip',
       version: resolved.version,
@@ -582,8 +713,67 @@ export function createApiApp(): express.Express {
     }
 
     if (match.source === 'local' && match.fullPath && fs.existsSync(match.fullPath)) {
+      const stat = fs.statSync(match.fullPath);
+      const totalSize = stat.size;
+      const sha256 = await getLocalFileSha256(
+        match.fullPath,
+        totalSize,
+        Math.round(stat.mtimeMs)
+      ).catch(() => '');
+
       res.setHeader('Content-Type', 'application/vnd.microsoft.portable-executable');
-      res.download(match.fullPath, match.filename);
+      res.setHeader('Accept-Ranges', 'bytes');
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${match.filename.replace(/"/g, '')}"`
+      );
+      if (sha256) {
+        res.setHeader('X-Artifact-Sha256', sha256);
+      }
+
+      const rangeHeader = String(req.headers.range || '').trim();
+      if (rangeHeader) {
+        const rangeMatch = /^bytes=(\d*)-(\d*)$/i.exec(rangeHeader);
+        if (!rangeMatch) {
+          res.status(416).setHeader('Content-Range', `bytes */${totalSize}`).end();
+          return;
+        }
+        const start = rangeMatch[1] ? parseInt(rangeMatch[1], 10) : 0;
+        const requestedEnd = rangeMatch[2] ? parseInt(rangeMatch[2], 10) : totalSize - 1;
+        const end = Math.min(totalSize - 1, requestedEnd);
+
+        if (Number.isNaN(start) || Number.isNaN(end) || start > end || start >= totalSize) {
+          res.status(416).setHeader('Content-Range', `bytes */${totalSize}`).end();
+          return;
+        }
+
+        const chunkLength = end - start + 1;
+        res.status(206);
+        res.setHeader('Content-Range', `bytes ${start}-${end}/${totalSize}`);
+        res.setHeader('Content-Length', String(chunkLength));
+
+        if (req.method === 'HEAD') {
+          res.end();
+          return;
+        }
+
+        const stream = fs.createReadStream(match.fullPath, { start, end });
+        stream.on('error', () => {
+          if (!res.headersSent) res.status(500).end();
+          else res.destroy();
+        });
+        stream.pipe(res);
+        return;
+      }
+
+      res.setHeader('Content-Length', String(totalSize));
+      if (req.method === 'HEAD') {
+        res.end();
+        return;
+      }
+      fs.createReadStream(match.fullPath).pipe(res);
       return;
     }
 

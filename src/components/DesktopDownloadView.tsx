@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   Check,
   CheckCircle2,
   Clock,
@@ -12,22 +13,19 @@ import {
   MonitorDown,
   Package,
   ShieldCheck,
+  Square,
   Terminal,
 } from 'lucide-react';
 import { useTranslation } from '../i18n/LanguageContext';
+import {
+  downloadVerifiedChunkedExe,
+  formatFileSize,
+  type DesktopArtifactInfo,
+} from '../utils/desktopDownloader';
 import { subscribePublishedReleases, type AppReleaseDoc } from '../utils/firestoreSync';
 import { CLIENT_APP_VERSION } from './UpdatesView';
 
-interface DesktopArtifact {
-  id: 'setup-exe' | 'portable-exe';
-  kind: 'installer' | 'portable';
-  source?: 'local' | 'github';
-  version?: string;
-  filename: string;
-  sizeBytes: number;
-  downloadUrl: string;
-  updatedAtMs: number;
-}
+type DesktopArtifact = DesktopArtifactInfo;
 
 interface DesktopInfoResponse {
   appName: string;
@@ -43,18 +41,21 @@ interface DesktopDownloadViewProps {
   onOpenUpdates: () => void;
 }
 
-function formatFileSize(bytes: number): string {
-  if (!bytes || bytes <= 0) return '0 MB';
-  const mb = bytes / (1024 * 1024);
-  return `${mb.toFixed(1)} MB`;
-}
-
 export function DesktopDownloadView({ onBackHome, onOpenUpdates }: DesktopDownloadViewProps) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [desktopInfo, setDesktopInfo] = useState<DesktopInfoResponse | null>(null);
   const [cloudReleases, setCloudReleases] = useState<AppReleaseDoc[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Verified chunked download state (prevents Cloud Run 32 MiB truncation / corrupt .exe)
+  const downloadAbortRef = useRef<AbortController | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [downloadedBytes, setDownloadedBytes] = useState(0);
+  const [downloadTotalBytes, setDownloadTotalBytes] = useState(0);
+  const [downloadStage, setDownloadStage] = useState<'idle' | 'downloading' | 'verifying' | 'done' | 'error'>('idle');
+  const [downloadError, setDownloadError] = useState('');
+
   const isRunningDesktop = typeof window !== 'undefined' && Boolean(window.paijoDesktop?.isDesktop);
 
   // Developer-only diagnostics & build instructions hidden from regular users
@@ -111,6 +112,7 @@ export function DesktopDownloadView({ onBackHome, onOpenUpdates }: DesktopDownlo
     return () => {
       active = false;
       unsub();
+      downloadAbortRef.current?.abort();
     };
   }, []);
 
@@ -121,7 +123,7 @@ export function DesktopDownloadView({ onBackHome, onOpenUpdates }: DesktopDownlo
   const cloudDesktopRelease = cloudReleases.find(
     (rel) =>
       rel.status === 'published' &&
-      (rel.buildTarget === 'desktop' || rel.buildTarget === 'all') &&
+      (rel.buildTarget === 'desktop' || rel.buildTarget === 'all' || rel.buildTarget === 'fullstack') &&
       Boolean(rel.packageUrl && /^https?:\/\//i.test(rel.packageUrl))
   );
 
@@ -145,6 +147,121 @@ export function DesktopDownloadView({ onBackHome, onOpenUpdates }: DesktopDownlo
       setCopiedId((prev) => (prev === id ? null : prev));
     }, 1800);
   };
+
+  const handleCancelDownload = () => {
+    downloadAbortRef.current?.abort();
+    downloadAbortRef.current = null;
+    setDownloadingId(null);
+    setDownloadStage('idle');
+    setDownloadedBytes(0);
+    setDownloadTotalBytes(0);
+  };
+
+  const handleDownloadVerifiedChunked = async (artifact: DesktopArtifact) => {
+    if (downloadingId) return;
+
+    const totalSize = artifact.sizeBytes;
+    if (!totalSize || totalSize <= 0) {
+      window.location.assign(artifact.downloadUrl);
+      return;
+    }
+
+    const ctrl = new AbortController();
+    downloadAbortRef.current = ctrl;
+    setDownloadingId(artifact.id);
+    setDownloadStage('downloading');
+    setDownloadError('');
+    setDownloadedBytes(0);
+    setDownloadTotalBytes(totalSize);
+
+    try {
+      await downloadVerifiedChunkedExe(artifact, {
+        signal: ctrl.signal,
+        onProgress: (received, total, stage) => {
+          setDownloadedBytes(received);
+          setDownloadTotalBytes(total);
+          setDownloadStage(stage);
+        },
+      });
+      setDownloadStage('done');
+    } catch (err) {
+      if ((err as { name?: string })?.name === 'AbortError' || ctrl.signal.aborted) {
+        setDownloadStage('idle');
+      } else {
+        setDownloadStage('error');
+        setDownloadError(
+          err instanceof Error ? err.message : 'Gagal mengunduh file .exe. Silakan coba lagi.'
+        );
+      }
+    } finally {
+      if (downloadAbortRef.current === ctrl) {
+        downloadAbortRef.current = null;
+      }
+      setDownloadingId(null);
+    }
+  };
+
+  const renderArtifactButton = (artifact: DesktopArtifact, primaryStyle = true) => {
+    const isThisDownloading = downloadingId === artifact.id;
+    const isAnyDownloading = Boolean(downloadingId);
+    const pct = downloadTotalBytes
+      ? Math.min(100, Math.round((downloadedBytes / downloadTotalBytes) * 100))
+      : 0;
+
+    if (artifact.source === 'github') {
+      return (
+        <a
+          href={artifact.downloadUrl}
+          download={artifact.filename}
+          className={`px-4 py-3 rounded-lg text-white text-xs font-extrabold inline-flex items-center justify-center gap-2 transition-colors whitespace-nowrap shrink-0 ${
+            primaryStyle
+              ? 'bg-[#ff6b00] hover:bg-[#ff8224]'
+              : 'bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173]'
+          }`}
+        >
+          <Download className={`w-4 h-4 shrink-0 ${primaryStyle ? '' : 'text-[#ff6b00]'}`} />
+          <span>{t('download.btnExe', { size: formatFileSize(artifact.sizeBytes) })}</span>
+        </a>
+      );
+    }
+
+    if (isThisDownloading) {
+      return (
+        <button
+          type="button"
+          onClick={handleCancelDownload}
+          className="px-4 py-3 rounded-lg bg-[#16264d] hover:bg-red-950/50 border border-[#ff6b00] text-white text-xs font-bold inline-flex items-center justify-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
+        >
+          <Square className="w-3.5 h-3.5 fill-current text-[#ff6b00]" />
+          <span className="font-mono tabular-nums">
+            {downloadStage === 'verifying'
+              ? 'SHA-256…'
+              : `${pct}% (${formatFileSize(downloadedBytes)} / ${formatFileSize(downloadTotalBytes)})`}
+          </span>
+        </button>
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        disabled={isAnyDownloading}
+        onClick={() => handleDownloadVerifiedChunked(artifact)}
+        className={`px-4 py-3 rounded-lg text-white text-xs font-extrabold inline-flex items-center justify-center gap-2 transition-colors whitespace-nowrap shrink-0 disabled:opacity-45 cursor-pointer ${
+          primaryStyle
+            ? 'bg-[#ff6b00] hover:bg-[#ff8224]'
+            : 'bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173]'
+        }`}
+      >
+        <Download className={`w-4 h-4 shrink-0 ${primaryStyle ? '' : 'text-[#ff6b00]'}`} />
+        <span>{t('download.btnExe', { size: formatFileSize(artifact.sizeBytes) })}</span>
+      </button>
+    );
+  };
+
+  const progressPct = downloadTotalBytes
+    ? Math.min(100, Math.round((downloadedBytes / downloadTotalBytes) * 100))
+    : 0;
 
   return (
     <div className="space-y-6">
@@ -188,6 +305,52 @@ export function DesktopDownloadView({ onBackHome, onOpenUpdates }: DesktopDownlo
         </div>
       )}
 
+      {/* Active Verified Chunk Download Progress / Error / Done Banner */}
+      {(downloadingId || downloadStage === 'done' || (downloadStage === 'error' && downloadError)) && (
+        <section
+          className={`bg-[#101d3d] rounded-xl p-4 space-y-2 border ${
+            downloadStage === 'error'
+              ? 'border-red-500/55'
+              : downloadStage === 'done'
+                ? 'border-[#c7ff55]/55'
+                : 'border-[#ff6b00]/60'
+          }`}
+        >
+          {downloadStage === 'error' ? (
+            <div className="flex items-start gap-2.5 text-xs text-red-200">
+              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+              <span>{downloadError}</span>
+            </div>
+          ) : downloadStage === 'done' ? (
+            <div className="flex items-center gap-2.5 text-xs font-semibold text-[#c7ff55]">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>
+                File .exe terverifikasi utuh (SHA-256 cocok) dan siap dijalankan di Windows Anda.
+              </span>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2 text-xs text-[#e4ecfa]">
+                <span className="font-semibold">
+                  {downloadStage === 'verifying'
+                    ? 'Memverifikasi integritas SHA-256 file .exe…'
+                    : 'Mengunduh paket .exe per bagian terverifikasi (anti-corrupt)…'}
+                </span>
+                <span className="font-mono tabular-nums font-bold text-[#c7ff55]">
+                  {progressPct}% · {formatFileSize(downloadedBytes)} / {formatFileSize(downloadTotalBytes)}
+                </span>
+              </div>
+              <div className="h-2 bg-[#1a2d59] rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-[#ff6b00] transition-all duration-150"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
       {/* Primary Download Section */}
       {loading ? (
         <div className="bg-[#101d3d] border border-[#1e3159] rounded-xl p-6 text-xs text-[#93a7cc]">
@@ -212,15 +375,19 @@ export function DesktopDownloadView({ onBackHome, onOpenUpdates }: DesktopDownlo
                   <span className="font-mono tabular-nums font-semibold text-[#c7ff55]">
                     {formatFileSize(primaryArtifact.sizeBytes)}
                   </span>
+                  {primaryArtifact.sha256 && (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span className="font-mono text-[11px] text-[#93a7cc]">
+                        SHA-256: {primaryArtifact.sha256.slice(0, 12)}…
+                      </span>
+                    </>
+                  )}
                   <span aria-hidden="true">·</span>
-                  <a
-                    href={primaryArtifact.downloadUrl}
-                    download={primaryArtifact.filename}
-                    className="inline-flex items-center gap-1 font-mono text-[11px] text-[#dce6f7] hover:text-[#ff8224] underline underline-offset-2 truncate max-w-full"
-                  >
+                  <span className="inline-flex items-center gap-1 font-mono text-[11px] text-[#dce6f7] truncate max-w-full">
                     <Link2 className="w-3.5 h-3.5 shrink-0 text-[#ff6b00]" />
                     <span className="truncate">{resolveAbsoluteUrl(primaryArtifact.downloadUrl)}</span>
-                  </a>
+                  </span>
                 </div>
               </div>
 
@@ -237,14 +404,7 @@ export function DesktopDownloadView({ onBackHome, onOpenUpdates }: DesktopDownlo
                     <Copy className="w-4 h-4" />
                   )}
                 </button>
-                <a
-                  href={primaryArtifact.downloadUrl}
-                  download={primaryArtifact.filename}
-                  className="px-5 py-3 rounded-lg bg-[#ff6b00] hover:bg-[#ff8224] text-white text-sm font-extrabold inline-flex items-center justify-center gap-2 transition-colors whitespace-nowrap shrink-0"
-                >
-                  <Download className="w-4 h-4 shrink-0" />
-                  <span>{t('download.btnExe', { size: formatFileSize(primaryArtifact.sizeBytes) })}</span>
-                </a>
+                {renderArtifactButton(primaryArtifact, true)}
               </div>
             </section>
           )}
@@ -265,22 +425,13 @@ export function DesktopDownloadView({ onBackHome, onOpenUpdates }: DesktopDownlo
                     <div className="text-[11px] font-mono tabular-nums text-[#b8c7e3] truncate">
                       {setupArtifact.filename} · {formatFileSize(setupArtifact.sizeBytes)}
                     </div>
-                    <a
-                      href={setupArtifact.downloadUrl}
-                      download={setupArtifact.filename}
-                      className="block text-[11px] font-mono text-[#ff8224] hover:underline truncate"
-                    >
+                    <div className="text-[11px] font-mono text-[#ff8224] truncate">
                       {resolveAbsoluteUrl(setupArtifact.downloadUrl)}
-                    </a>
+                    </div>
                   </div>
-                  <a
-                    href={setupArtifact.downloadUrl}
-                    download={setupArtifact.filename}
-                    className="w-full px-4 py-3 rounded-lg bg-[#ff6b00] hover:bg-[#ff8224] text-white text-xs font-extrabold inline-flex items-center justify-center gap-2 transition-colors whitespace-nowrap shrink-0"
-                  >
-                    <Download className="w-4 h-4 shrink-0" />
-                    <span>{t('download.btnExe', { size: formatFileSize(setupArtifact.sizeBytes) })}</span>
-                  </a>
+                  <div className="w-full flex flex-col">
+                    {renderArtifactButton(setupArtifact, true)}
+                  </div>
                 </article>
               )}
 
@@ -297,22 +448,13 @@ export function DesktopDownloadView({ onBackHome, onOpenUpdates }: DesktopDownlo
                     <div className="text-[11px] font-mono tabular-nums text-[#b8c7e3] truncate">
                       {portableArtifact.filename} · {formatFileSize(portableArtifact.sizeBytes)}
                     </div>
-                    <a
-                      href={portableArtifact.downloadUrl}
-                      download={portableArtifact.filename}
-                      className="block text-[11px] font-mono text-[#ff8224] hover:underline truncate"
-                    >
+                    <div className="text-[11px] font-mono text-[#ff8224] truncate">
                       {resolveAbsoluteUrl(portableArtifact.downloadUrl)}
-                    </a>
+                    </div>
                   </div>
-                  <a
-                    href={portableArtifact.downloadUrl}
-                    download={portableArtifact.filename}
-                    className="w-full px-4 py-3 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-white text-xs font-extrabold inline-flex items-center justify-center gap-2 transition-colors whitespace-nowrap shrink-0"
-                  >
-                    <Download className="w-4 h-4 text-[#ff6b00] shrink-0" />
-                    <span>{t('download.btnExe', { size: formatFileSize(portableArtifact.sizeBytes) })}</span>
-                  </a>
+                  <div className="w-full flex flex-col">
+                    {renderArtifactButton(portableArtifact, !setupArtifact)}
+                  </div>
                 </article>
               )}
             </div>
@@ -392,7 +534,10 @@ export function DesktopDownloadView({ onBackHome, onOpenUpdates }: DesktopDownlo
                     npm install && npm run dist:win
                   </pre>
                   <p className="text-[11px] text-[#93a7cc]">
-                    GitHub Releases auto-sync: {desktopInfo?.githubConfigured ? 'DESKTOP_GITHUB_REPO active' : 'Set DESKTOP_GITHUB_REPO=owner/repo (or tag v1.5.0 push)'}
+                    GitHub Releases auto-sync:{' '}
+                    {desktopInfo?.githubConfigured
+                      ? 'DESKTOP_GITHUB_REPO active'
+                      : 'Set DESKTOP_GITHUB_REPO=owner/repo (or tag v1.5.0 push)'}
                   </p>
                 </div>
               )}
