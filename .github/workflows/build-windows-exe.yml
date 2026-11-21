@@ -17,6 +17,9 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
+    env:
+      npm_config_legacy_peer_deps: "true"
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -27,7 +30,7 @@ jobs:
           node-version: "22"
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Resolve version tag
         id: meta
@@ -47,15 +50,18 @@ jobs:
           "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Build Windows Setup Installer & Portable EXE
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run dist:win
 
       - name: Verify generated Windows EXE binaries
         shell: pwsh
         run: |
+          if (-not (Test-Path release)) {
+            Write-Error "release/ directory was not created."
+            exit 1
+          }
           $exes = Get-ChildItem -Path release -Filter "*.exe" -File | Where-Object { $_.Length -gt 20MB }
           if (-not $exes -or $exes.Count -eq 0) {
+            Get-ChildItem -Path release -Force | Format-Table -AutoSize
             Write-Error "No valid Windows .exe binaries (>20MB) were generated in release/."
             exit 1
           }
@@ -75,5 +81,6 @@ jobs:
           name: Paijo Clip ${{ steps.meta.outputs.tag }} (Windows x64)
           generate_release_notes: true
           make_latest: true
+          overwrite_files: true
           files: release/*.exe
           fail_on_unmatched_files: true
