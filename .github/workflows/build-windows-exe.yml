@@ -1,10 +1,18 @@
-name: Build Windows EXE (Paijo Clip)
+name: Build & Publish Windows EXE (Paijo Clip)
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag rilis opsional (contoh: v1.5.0). Kosongkan untuk memakai versi dari package.json."
+        required: false
+        type: string
   push:
     tags:
       - "v*"
+
+permissions:
+  contents: write
 
 jobs:
   build-windows:
@@ -13,19 +21,36 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: "npm"
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
-      - name: Build Windows Installer & Portable EXE
+      - name: Resolve version tag
+        id: meta
+        shell: pwsh
+        run: |
+          $pkg = Get-Content package.json -Raw | ConvertFrom-Json
+          $ver = $pkg.version
+          $tag = "${{ github.event.inputs.release_tag }}"
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            if ("${{ github.ref_type }}" -eq "tag") {
+              $tag = "${{ github.ref_name }}"
+            } else {
+              $tag = "v$ver"
+            }
+          }
+          "version=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Build Windows Setup Installer & Portable EXE
         run: npm run dist:win
 
-      - name: Upload Windows EXE Artifacts
+      - name: Upload Windows EXE Workflow Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Paijo-Clip-Windows-EXE
@@ -34,3 +59,15 @@ jobs:
             release/*.blockmap
             release/latest.yml
           if-no-files-found: error
+
+      - name: Publish Setup & Portable EXE to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: Paijo Clip ${{ steps.meta.outputs.tag }} (Windows x64)
+          generate_release_notes: true
+          make_latest: true
+          files: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml

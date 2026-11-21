@@ -1,12 +1,12 @@
-# Panduan Deploy Online ke Vercel (`*.vercel.app`)
+# Panduan Deploy Online ke Vercel (`*.vercel.app`) — Paijo Clip
 
-Aplikasi **Auto Clipper Studio** sudah dikonfigurasi agar dapat berjalan penuh di **Vercel** sebagai frontend Vite React + Serverless API Express (`/api/index.ts`) sekaligus tetap kompatibel di server Node lokal (`npm run dev` / `npm run start`).
+Aplikasi **Paijo Clip** sudah dikonfigurasi agar dapat berjalan penuh di **Vercel** sebagai frontend Vite React + Serverless API Express (`/api/index.ts`) sekaligus tetap kompatibel di server Node lokal (`npm run dev` / `npm run start`).
 
 ## Arsitektur Konfigurasi
 
 - **`vercel.json`** — Mengatur build Vite (`npm run build` -> `dist/`), routing SPA (`/*` -> `/index.html`), routing API (`/api/*` -> `/api/index.ts`), header keamanan & cache aset (`/assets/*`), serta batas eksekusi serverless (`maxDuration: 60`, `memory: 1024`).
 - **`api/index.ts`** — Entrypoint Vercel Serverless Function yang mengekspor instance Express dari `server/apiApp.ts`.
-- **`server/apiApp.ts`** — Seluruh endpoint backend (`/api/health`, `/api/app/version`, `/api/app/check-update`, `/api/transcribe`, `/api/ai-video/text`, `/api/ai-video/voice`, `/api/clips/highlights`, `/api/youtube/*`).
+- **`server/apiApp.ts`** — Seluruh endpoint backend (`/api/health`, `/api/desktop/info`, `/api/desktop/download/:artifactId`, `/api/app/version`, `/api/app/check-update`, `/api/transcribe`, `/api/ai-video/text`, `/api/ai-video/voice`, `/api/clips/highlights`, `/api/youtube/*`).
 - **`src/utils/audioAnalyzer.ts`** — Transkripsi audio AI otomatis memecah audio menjadi bagian maksimal 60 detik (`~2,56 MB` base64 per permintaan) agar selalu lolos batas payload `4,5 MB` milik Vercel Serverless Functions.
 
 ---
@@ -21,6 +21,7 @@ Aplikasi **Auto Clipper Studio** sudah dikonfigurasi agar dapat berjalan penuh d
    - **Output Directory**: `dist`
 4. Masuk ke menu **Environment Variables** dan tambahkan:
    - `GEMINI_API_KEY` = API key Gemini milik Anda (wajib untuk Transkripsi AI, Deteksi Momen Viral AI, Naskah Video AI, dan Suara AI).
+   - `DESKTOP_GITHUB_REPO` *(opsional)* = `pemilik/nama-repo` tempat GitHub Releases `.exe` diterbitkan (jika repositori Vercel tersambung ke GitHub yang sama, Vercel otomatis mendeteksinya).
 5. Klik **Deploy** dan tunggu hingga domain `https://<nama-project>.vercel.app` aktif.
 
 ## Alternatif: Deploy Langsung via Vercel CLI

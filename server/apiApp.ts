@@ -285,16 +285,37 @@ export function createApiApp(): express.Express {
   });
 
   interface DesktopArtifactEntry {
-    id: string;
+    id: 'setup-exe' | 'portable-exe';
     kind: 'installer' | 'portable';
+    source: 'local' | 'github';
+    version: string;
     filename: string;
     sizeBytes: number;
     downloadUrl: string;
-    fullPath: string;
+    fullPath?: string;
     updatedAtMs: number;
   }
 
-  function scanDesktopArtifacts(): DesktopArtifactEntry[] {
+  function resolveDesktopGithubRepo(overrideRepo?: string): string {
+    const candidates = [
+      overrideRepo || '',
+      process.env.DESKTOP_GITHUB_REPO || '',
+      process.env.VITE_DESKTOP_GITHUB_REPO || '',
+      process.env.VERCEL_GIT_REPO_OWNER && process.env.VERCEL_GIT_REPO_SLUG
+        ? `${process.env.VERCEL_GIT_REPO_OWNER}/${process.env.VERCEL_GIT_REPO_SLUG}`
+        : '',
+    ];
+    for (const raw of candidates) {
+      const clean = String(raw || '').trim();
+      if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(clean)) {
+        return clean;
+      }
+    }
+    return '';
+  }
+
+  function scanLocalDesktopArtifacts(): DesktopArtifactEntry[] {
+    const appVersion = readAppPackageVersion();
     const rootCandidates = [
       process.env.PAIJO_APP_ROOT || '',
       process.cwd(),
@@ -320,15 +341,17 @@ export function createApiApp(): express.Express {
 
           const fullPath = path.join(dir, entry.name);
           const stat = fs.statSync(fullPath);
-          if (!stat.isFile() || stat.size < 1024) continue;
+          if (!stat.isFile() || stat.size < 20 * 1024 * 1024) continue;
 
           seenNames.add(entry.name.toLowerCase());
           const isPortable = /portable/i.test(entry.name);
           const kind: 'installer' | 'portable' = isPortable ? 'portable' : 'installer';
-          const id = isPortable ? 'portable-exe' : 'setup-exe';
+          const id: 'setup-exe' | 'portable-exe' = isPortable ? 'portable-exe' : 'setup-exe';
           found.push({
             id,
             kind,
+            source: 'local',
+            version: appVersion,
             filename: entry.name,
             sizeBytes: stat.size,
             downloadUrl: `/api/desktop/download/${id}`,
@@ -344,35 +367,234 @@ export function createApiApp(): express.Express {
     return found.sort((a, b) => (a.kind === 'installer' ? -1 : 1) - (b.kind === 'installer' ? -1 : 1));
   }
 
-  app.get('/api/desktop/info', (_req, res) => {
-    const artifacts = scanDesktopArtifacts().map(({ fullPath: _fp, ...pub }) => pub);
+  const githubReleaseCache = new Map<
+    string,
+    { expiresAt: number; version: string; artifacts: DesktopArtifactEntry[] }
+  >();
+
+  async function fetchGithubDesktopArtifacts(repo: string): Promise<{
+    version: string;
+    artifacts: DesktopArtifactEntry[];
+  }> {
+    if (!repo) return { version: readAppPackageVersion(), artifacts: [] };
+    const cached = githubReleaseCache.get(repo);
+    if (cached && cached.expiresAt > Date.now()) {
+      return { version: cached.version, artifacts: cached.artifacts };
+    }
+
+    const headers: Record<string, string> = {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'PaijoClip-Studio',
+    };
+    const ghToken = process.env.GITHUB_TOKEN || process.env.DESKTOP_GITHUB_TOKEN || '';
+    if (ghToken) {
+      headers.Authorization = `Bearer ${ghToken}`;
+    }
+
+    const extractExeFromRelease = (rel: {
+      tag_name?: string;
+      name?: string;
+      published_at?: string;
+      draft?: boolean;
+      assets?: Array<{
+        name?: string;
+        size?: number;
+        browser_download_url?: string;
+        updated_at?: string;
+      }>;
+    }): { version: string; artifacts: DesktopArtifactEntry[] } => {
+      const assets = Array.isArray(rel.assets) ? rel.assets : [];
+      const ver = String(rel.tag_name || rel.name || readAppPackageVersion())
+        .replace(/^v/i, '')
+        .trim() || readAppPackageVersion();
+
+      const validExeAssets = assets.filter(
+        (a) =>
+          a.name &&
+          a.browser_download_url &&
+          /\.exe$/i.test(a.name) &&
+          !/uninstaller/i.test(a.name)
+      );
+
+      const portableAsset = validExeAssets.find((a) => /portable/i.test(a.name || ''));
+      const setupAsset =
+        validExeAssets.find((a) => /setup/i.test(a.name || '') && !/portable/i.test(a.name || '')) ||
+        validExeAssets.find((a) => !/portable/i.test(a.name || ''));
+
+      const out: DesktopArtifactEntry[] = [];
+      if (setupAsset?.name && setupAsset.browser_download_url) {
+        out.push({
+          id: 'setup-exe',
+          kind: 'installer',
+          source: 'github',
+          version: ver,
+          filename: setupAsset.name,
+          sizeBytes: Number(setupAsset.size) || 0,
+          downloadUrl: setupAsset.browser_download_url,
+          updatedAtMs: Date.parse(setupAsset.updated_at || rel.published_at || '') || Date.now(),
+        });
+      }
+      if (portableAsset?.name && portableAsset.browser_download_url) {
+        out.push({
+          id: 'portable-exe',
+          kind: 'portable',
+          source: 'github',
+          version: ver,
+          filename: portableAsset.name,
+          sizeBytes: Number(portableAsset.size) || 0,
+          downloadUrl: portableAsset.browser_download_url,
+          updatedAtMs: Date.parse(portableAsset.updated_at || rel.published_at || '') || Date.now(),
+        });
+      }
+      return { version: ver, artifacts: out };
+    };
+
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 6000);
+      const latestRes = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
+        headers,
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+
+      let parsed: { version: string; artifacts: DesktopArtifactEntry[] } = {
+        version: readAppPackageVersion(),
+        artifacts: [],
+      };
+
+      if (latestRes.ok) {
+        parsed = extractExeFromRelease(await latestRes.json());
+      }
+
+      // If /releases/latest didn't exist or lacked .exe assets, inspect recent releases
+      if (parsed.artifacts.length === 0) {
+        const listController = new AbortController();
+        const listTimer = setTimeout(() => listController.abort(), 6000);
+        const listRes = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=5`, {
+          headers,
+          signal: listController.signal,
+        });
+        clearTimeout(listTimer);
+
+        if (listRes.ok) {
+          const list = (await listRes.json()) as Array<{
+            tag_name?: string;
+            name?: string;
+            published_at?: string;
+            draft?: boolean;
+            assets?: Array<{
+              name?: string;
+              size?: number;
+              browser_download_url?: string;
+              updated_at?: string;
+            }>;
+          }>;
+          for (const rel of Array.isArray(list) ? list : []) {
+            if (rel.draft) continue;
+            const candidate = extractExeFromRelease(rel);
+            if (candidate.artifacts.length > 0) {
+              parsed = candidate;
+              break;
+            }
+          }
+        }
+      }
+
+      githubReleaseCache.set(repo, {
+        expiresAt: Date.now() + (parsed.artifacts.length > 0 ? 5 * 60 * 1000 : 60 * 1000),
+        version: parsed.version,
+        artifacts: parsed.artifacts,
+      });
+      return parsed;
+    } catch {
+      githubReleaseCache.set(repo, {
+        expiresAt: Date.now() + 30 * 1000,
+        version: readAppPackageVersion(),
+        artifacts: [],
+      });
+      return { version: readAppPackageVersion(), artifacts: [] };
+    }
+  }
+
+  async function resolveMergedDesktopArtifacts(overrideRepo?: string): Promise<{
+    version: string;
+    githubConfigured: boolean;
+    artifacts: DesktopArtifactEntry[];
+  }> {
+    const localArtifacts = scanLocalDesktopArtifacts();
+    const repo = resolveDesktopGithubRepo(overrideRepo);
+    const ghResult = repo
+      ? await fetchGithubDesktopArtifacts(repo)
+      : { version: readAppPackageVersion(), artifacts: [] };
+
+    const mergedByKind = new Map<'installer' | 'portable', DesktopArtifactEntry>();
+    for (const item of ghResult.artifacts) {
+      mergedByKind.set(item.kind, item);
+    }
+    for (const localItem of localArtifacts) {
+      mergedByKind.set(localItem.kind, localItem);
+    }
+
+    const merged = Array.from(mergedByKind.values()).sort(
+      (a, b) => (a.kind === 'installer' ? -1 : 1) - (b.kind === 'installer' ? -1 : 1)
+    );
+    const bestVersion =
+      merged.find((m) => m.version)?.version || ghResult.version || readAppPackageVersion();
+
+    return {
+      version: bestVersion,
+      githubConfigured: Boolean(repo),
+      artifacts: merged,
+    };
+  }
+
+  app.get('/api/desktop/info', async (req, res) => {
+    const repoOverride = typeof req.query.repo === 'string' ? req.query.repo : undefined;
+    const resolved = await resolveMergedDesktopArtifacts(repoOverride);
+    const publicArtifacts = resolved.artifacts.map(({ fullPath: _fp, ...pub }) => pub);
     res.json({
       appName: 'Paijo Clip',
-      version: readAppPackageVersion(),
+      version: resolved.version,
       platform: 'win32-x64',
       runtime: process.env.VERCEL ? 'vercel-serverless' : 'node-server',
-      artifacts,
+      githubConfigured: resolved.githubConfigured,
+      artifacts: publicArtifacts,
     });
   });
 
-  app.get('/api/desktop/download/:artifactId', (req, res) => {
+  app.get('/api/desktop/download/:artifactId', async (req, res) => {
     const artifactId = String(req.params.artifactId || '').trim();
     if (artifactId !== 'setup-exe' && artifactId !== 'portable-exe') {
       res.status(400).json({ error: 'Target unduhan desktop tidak valid.' });
       return;
     }
 
-    const artifacts = scanDesktopArtifacts();
-    const match = artifacts.find((a) => a.id === artifactId) || artifacts[0];
-    if (!match || !fs.existsSync(match.fullPath)) {
+    const repoOverride = typeof req.query.repo === 'string' ? req.query.repo : undefined;
+    const resolved = await resolveMergedDesktopArtifacts(repoOverride);
+    const match = resolved.artifacts.find((a) => a.id === artifactId) || resolved.artifacts[0];
+
+    if (!match) {
       res.status(404).json({
-        error: 'File installer .exe belum tersedia pada server saat ini.',
+        error: 'Rilis Windows (.exe) belum tersedia saat ini.',
       });
       return;
     }
 
-    res.setHeader('Content-Type', 'application/vnd.microsoft.portable-executable');
-    res.download(match.fullPath, match.filename);
+    if (match.source === 'local' && match.fullPath && fs.existsSync(match.fullPath)) {
+      res.setHeader('Content-Type', 'application/vnd.microsoft.portable-executable');
+      res.download(match.fullPath, match.filename);
+      return;
+    }
+
+    if (/^https?:\/\//i.test(match.downloadUrl)) {
+      res.redirect(302, match.downloadUrl);
+      return;
+    }
+
+    res.status(404).json({
+      error: 'Rilis Windows (.exe) belum tersedia saat ini.',
+    });
   });
 
   app.post('/api/youtube/info', async (req, res) => {

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   Check,
   CheckCircle2,
+  Clock,
   Copy,
   Cpu,
   Download,
@@ -20,6 +21,8 @@ import { CLIENT_APP_VERSION } from './UpdatesView';
 interface DesktopArtifact {
   id: 'setup-exe' | 'portable-exe';
   kind: 'installer' | 'portable';
+  source?: 'local' | 'github';
+  version?: string;
   filename: string;
   sizeBytes: number;
   downloadUrl: string;
@@ -31,6 +34,7 @@ interface DesktopInfoResponse {
   version: string;
   platform: string;
   runtime: string;
+  githubConfigured?: boolean;
   artifacts: DesktopArtifact[];
 }
 
@@ -53,7 +57,7 @@ export function DesktopDownloadView({ onBackHome, onOpenUpdates }: DesktopDownlo
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const isRunningDesktop = typeof window !== 'undefined' && Boolean(window.paijoDesktop?.isDesktop);
 
-  // Developer-only CLI / build instructions hidden from regular users
+  // Developer-only diagnostics & build instructions hidden from regular users
   const [devUnlocked, setDevUnlocked] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     try {
@@ -94,7 +98,7 @@ export function DesktopDownloadView({ onBackHome, onOpenUpdates }: DesktopDownlo
         if (active && data) setDesktopInfo(data);
       })
       .catch(() => {
-        // ignore network errors
+        // Ignore transient fetch errors and fall back to pending/cloud state
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -154,7 +158,7 @@ export function DesktopDownloadView({ onBackHome, onOpenUpdates }: DesktopDownlo
             className="w-11 h-14 object-contain shrink-0 rounded-lg"
           />
           <div className="space-y-1">
-            <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight text-balance">
               {t('download.title')}
             </h1>
             <p className="text-xs sm:text-sm text-[#93a7cc] leading-relaxed">
@@ -191,13 +195,15 @@ export function DesktopDownloadView({ onBackHome, onOpenUpdates }: DesktopDownlo
         </div>
       ) : (
         <div className="space-y-4">
-          {/* Featured Primary Direct Download Hero when a Windows .exe build is hosted */}
+          {/* Featured Primary Direct Download Card when a Windows .exe build is available */}
           {primaryArtifact && (
-            <section className="bg-gradient-to-br from-[#101d3d] to-[#0c1733] border border-[#ff6b00]/60 rounded-xl p-5 flex flex-wrap items-center justify-between gap-4 shadow-lg">
+            <section className="bg-[#101d3d] border border-[#ff6b00]/60 rounded-xl p-5 flex flex-wrap items-center justify-between gap-4">
               <div className="space-y-1.5 min-w-0 flex-1">
-                <div className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#ff8224]">
+                <div className="inline-flex items-center gap-2 text-xs font-bold text-[#ff8224]">
                   <MonitorDown className="w-4 h-4 shrink-0" />
-                  <span>Windows 64-bit (.exe) · v{displayVersion}</span>
+                  <span className="font-mono tabular-nums">
+                    Windows 10 / 11 (64-bit) · v{primaryArtifact.version || displayVersion}
+                  </span>
                 </div>
                 <div className="text-base sm:text-lg font-extrabold text-white truncate">
                   {primaryArtifact.filename}
@@ -222,8 +228,8 @@ export function DesktopDownloadView({ onBackHome, onOpenUpdates }: DesktopDownlo
                 <button
                   type="button"
                   onClick={() => handleCopyLink(primaryArtifact.id, primaryArtifact.downloadUrl)}
-                  className="px-3 py-3 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-[#e4ecfa] inline-flex items-center gap-1.5 cursor-pointer"
-                  title="Salin tautan unduhan langsung"
+                  className="px-3 py-3 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-[#e4ecfa] inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+                  aria-label="Salin tautan unduhan"
                 >
                   {copiedId === primaryArtifact.id ? (
                     <Check className="w-4 h-4 text-[#c7ff55]" />
@@ -234,7 +240,7 @@ export function DesktopDownloadView({ onBackHome, onOpenUpdates }: DesktopDownlo
                 <a
                   href={primaryArtifact.downloadUrl}
                   download={primaryArtifact.filename}
-                  className="px-5 py-3 rounded-lg bg-[#ff6b00] hover:bg-[#ff8224] text-white text-sm font-extrabold inline-flex items-center justify-center gap-2 shadow-md transition-colors whitespace-nowrap"
+                  className="px-5 py-3 rounded-lg bg-[#ff6b00] hover:bg-[#ff8224] text-white text-sm font-extrabold inline-flex items-center justify-center gap-2 transition-colors whitespace-nowrap shrink-0"
                 >
                   <Download className="w-4 h-4 shrink-0" />
                   <span>{t('download.btnExe', { size: formatFileSize(primaryArtifact.sizeBytes) })}</span>
@@ -243,7 +249,7 @@ export function DesktopDownloadView({ onBackHome, onOpenUpdates }: DesktopDownlo
             </section>
           )}
 
-          {/* Individual Windows Artifact Cards (.exe Installer / Portable) */}
+          {/* Setup Installer & Portable (.exe) Dual Cards */}
           {(setupArtifact || portableArtifact) && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {setupArtifact && (
@@ -264,13 +270,13 @@ export function DesktopDownloadView({ onBackHome, onOpenUpdates }: DesktopDownlo
                       download={setupArtifact.filename}
                       className="block text-[11px] font-mono text-[#ff8224] hover:underline truncate"
                     >
-                      {setupArtifact.downloadUrl}
+                      {resolveAbsoluteUrl(setupArtifact.downloadUrl)}
                     </a>
                   </div>
                   <a
                     href={setupArtifact.downloadUrl}
                     download={setupArtifact.filename}
-                    className="w-full px-4 py-3 rounded-lg bg-[#ff6b00] hover:bg-[#ff8224] text-white text-xs font-extrabold inline-flex items-center justify-center gap-2 transition-colors whitespace-nowrap"
+                    className="w-full px-4 py-3 rounded-lg bg-[#ff6b00] hover:bg-[#ff8224] text-white text-xs font-extrabold inline-flex items-center justify-center gap-2 transition-colors whitespace-nowrap shrink-0"
                   >
                     <Download className="w-4 h-4 shrink-0" />
                     <span>{t('download.btnExe', { size: formatFileSize(setupArtifact.sizeBytes) })}</span>
@@ -296,15 +302,15 @@ export function DesktopDownloadView({ onBackHome, onOpenUpdates }: DesktopDownlo
                       download={portableArtifact.filename}
                       className="block text-[11px] font-mono text-[#ff8224] hover:underline truncate"
                     >
-                      {portableArtifact.downloadUrl}
+                      {resolveAbsoluteUrl(portableArtifact.downloadUrl)}
                     </a>
                   </div>
                   <a
                     href={portableArtifact.downloadUrl}
                     download={portableArtifact.filename}
-                    className="w-full px-4 py-3 rounded-lg bg-[#ff6b00] hover:bg-[#ff8224] text-white text-xs font-extrabold inline-flex items-center justify-center gap-2 transition-colors whitespace-nowrap"
+                    className="w-full px-4 py-3 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-white text-xs font-extrabold inline-flex items-center justify-center gap-2 transition-colors whitespace-nowrap shrink-0"
                   >
-                    <Download className="w-4 h-4 shrink-0" />
+                    <Download className="w-4 h-4 text-[#ff6b00] shrink-0" />
                     <span>{t('download.btnExe', { size: formatFileSize(portableArtifact.sizeBytes) })}</span>
                   </a>
                 </article>
@@ -312,7 +318,7 @@ export function DesktopDownloadView({ onBackHome, onOpenUpdates }: DesktopDownlo
             </div>
           )}
 
-          {/* Published Cloud Desktop Release from Firestore */}
+          {/* Published Cloud Desktop Release from Firestore (if developer attached .exe URL) */}
           {cloudDesktopRelease && (
             <section className="bg-[#101d3d] border border-[#2a4173] rounded-xl p-5 flex flex-wrap items-center justify-between gap-4">
               <div className="space-y-1 min-w-0 flex-1">
@@ -344,17 +350,40 @@ export function DesktopDownloadView({ onBackHome, onOpenUpdates }: DesktopDownlo
             </section>
           )}
 
-          {/* Fallback when no binary is present on serverless web host */}
+          {/* Clean Non-Technical Pending Status for Regular Users when Release is Not Published Yet */}
           {!hasAnyDownload && (
-            <section className="bg-[#101d3d] border border-[#1e3159] rounded-xl p-5 space-y-3.5">
-              <div className="space-y-1">
-                <h2 className="text-sm font-bold text-white">{t('download.unavailableTitle')}</h2>
-                <p className="text-xs text-[#93a7cc] leading-relaxed">
-                  {t('download.unavailableDesc')}
-                </p>
+            <section className="bg-[#101d3d] border border-[#1e3159] rounded-xl p-5 space-y-4">
+              <div className="flex items-start gap-3">
+                <Clock className="w-5 h-5 text-[#ff8224] shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <h2 className="text-sm font-bold text-white">{t('download.unavailableTitle')}</h2>
+                  <p className="text-xs text-[#93a7cc] leading-relaxed">
+                    {t('download.unavailableDesc')}
+                  </p>
+                </div>
               </div>
+
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={onBackHome}
+                  className="px-4 py-2 rounded-lg bg-[#ff6b00] hover:bg-[#ff8224] text-white text-xs font-bold whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  {t('download.backHome')}
+                </button>
+                {devUnlocked && (
+                  <button
+                    type="button"
+                    onClick={onOpenUpdates}
+                    className="px-3.5 py-2 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-white inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+                  >
+                    {t('download.openUpdates')}
+                  </button>
+                )}
+              </div>
+
               {devUnlocked && (
-                <div className="bg-[#0c1733] border border-[#1e3159] rounded-lg p-3.5 space-y-1.5">
+                <div className="bg-[#0c1733] border border-[#1e3159] rounded-lg p-3.5 space-y-2">
                   <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[#b8c7e3]">
                     <Terminal className="w-3.5 h-3.5 text-[#ff6b00]" />
                     <span>{t('download.buildCmdLabel')}</span>
@@ -362,17 +391,11 @@ export function DesktopDownloadView({ onBackHome, onOpenUpdates }: DesktopDownlo
                   <pre className="text-xs font-mono text-[#c7ff55] overflow-x-auto">
                     npm install && npm run dist:win
                   </pre>
+                  <p className="text-[11px] text-[#93a7cc]">
+                    GitHub Releases auto-sync: {desktopInfo?.githubConfigured ? 'DESKTOP_GITHUB_REPO active' : 'Set DESKTOP_GITHUB_REPO=owner/repo (or tag v1.5.0 push)'}
+                  </p>
                 </div>
               )}
-              <div>
-                <button
-                  type="button"
-                  onClick={onOpenUpdates}
-                  className="px-3.5 py-2 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-white inline-flex items-center gap-1.5 cursor-pointer"
-                >
-                  {t('download.openUpdates')}
-                </button>
-              </div>
             </section>
           )}
         </div>
