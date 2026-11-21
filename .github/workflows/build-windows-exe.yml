@@ -59,7 +59,7 @@ jobs:
             Write-Error "release/ directory was not created."
             exit 1
           }
-          $exes = Get-ChildItem -Path release -Filter "*.exe" -File | Where-Object { $_.Length -gt 20MB }
+          $exes = Get-ChildItem -Path release -Filter "*.exe" -File | Where-Object { $_.Length -gt 20MB -and $_.Name -notlike "*__uninstaller*" }
           if (-not $exes -or $exes.Count -eq 0) {
             Get-ChildItem -Path release -Force | Format-Table -AutoSize
             Write-Error "No valid Windows .exe binaries (>20MB) were generated in release/."
@@ -71,16 +71,21 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Paijo-Clip-Windows-EXE
-          path: release/*.exe
+          path: |
+            release/*-Setup-*.exe
+            release/*-Portable-*.exe
           if-no-files-found: error
 
       - name: Publish Setup & Portable EXE to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ steps.meta.outputs.tag }}
           name: Paijo Clip ${{ steps.meta.outputs.tag }} (Windows x64)
           generate_release_notes: true
           make_latest: true
           overwrite_files: true
-          files: release/*.exe
+          files: |
+            release/*-Setup-*.exe
+            release/*-Portable-*.exe
           fail_on_unmatched_files: true
