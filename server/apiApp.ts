@@ -6,7 +6,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 
 dotenv.config();
 
@@ -995,7 +995,7 @@ export function createApiApp(): express.Express {
     try {
       const {
         prompt,
-        sceneCount = 15,
+        sceneCount = 22,
         targetDurationMin = 5,
         language = 'id',
         visualTheme = 'cinematic',
@@ -1009,8 +1009,8 @@ export function createApiApp(): express.Express {
 
       const safeMinutes = Math.max(5, Math.min(10, Number(targetDurationMin) || 5));
       const targetTotalSec = Math.round(safeMinutes * 60);
-      const targetScenes = Math.max(15, Math.min(30, Number(sceneCount) || Math.round(safeMinutes * 3)));
-      const perSceneTarget = Math.max(18, Math.round(targetTotalSec / targetScenes));
+      const targetScenes = Math.max(15, Math.min(45, Number(sceneCount) || Math.round(safeMinutes * 4.2)));
+      const perSceneTarget = Math.max(12, Math.round(targetTotalSec / targetScenes));
       const langLabel = LANGUAGE_NAME_MAP[String(language || 'id').toLowerCase()] || 'Indonesian (Bahasa Indonesia)';
       const ai = getAiClient();
 
@@ -1022,8 +1022,9 @@ Language for title, summary, visualTitle, and narration: ${langLabel}.
 Style/type: ${videoType}, visual mood: ${visualTheme}.
 Minimum total duration: ${safeMinutes} minutes (${targetTotalSec} seconds).
 Generate exactly ${targetScenes} sequential scenes structured clearly from Hook -> Context -> Deep Dive Sections -> Real Examples -> Conclusion & Call-to-Action.
-Each scene must be around ${perSceneTarget} seconds long (18-26 seconds), with rich, non-repetitive spoken narration (~45-62 words per scene), a concise visualTitle (3-6 words), and a detailed visual scene description in imagePrompt.`,
+Each scene must be around ${perSceneTarget} seconds long (12-18 seconds), with rich, non-repetitive spoken narration (~30-46 words per scene), a concise visualTitle (3-6 words), and a detailed visual scene description in imagePrompt.`,
           config: {
+            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
             systemInstruction:
               'You are an experienced documentary and vertical-video director and scriptwriter. Write substantive, engaging, non-repetitive scenes that meet the exact target duration (minimum 5 minutes). Output strictly valid JSON matching the requested schema.',
             responseMimeType: 'application/json',
@@ -1038,9 +1039,9 @@ Each scene must be around ${perSceneTarget} seconds long (18-26 seconds), with r
                     type: Type.OBJECT,
                     properties: {
                       visualTitle: { type: Type.STRING, description: 'Short 3-6 word headline shown on the scene' },
-                      narration: { type: Type.STRING, description: 'Spoken narration script (~45-62 words for ~20s)' },
+                      narration: { type: Type.STRING, description: 'Spoken narration script (~30-46 words for ~14s)' },
                       imagePrompt: { type: Type.STRING, description: 'Visual background description for 9:16 frame' },
-                      durationSec: { type: Type.NUMBER, description: 'Scene duration in seconds (18-28)' },
+                      durationSec: { type: Type.NUMBER, description: 'Scene duration in seconds (12-22)' },
                     },
                     required: ['visualTitle', 'narration', 'imagePrompt', 'durationSec'],
                   },
@@ -1069,7 +1070,7 @@ Each scene must be around ${perSceneTarget} seconds long (18-26 seconds), with r
       }
 
       const baseDurations = rawScenes.map((sc) =>
-        Math.max(15, Math.min(34, Number(sc.durationSec) || perSceneTarget))
+        Math.max(11, Math.min(28, Number(sc.durationSec) || perSceneTarget))
       );
       const rawSum = baseDurations.reduce((a, b) => a + b, 0);
       const requiredMinSec = Math.max(300, targetTotalSec);
@@ -1160,6 +1161,10 @@ Each scene must be around ${perSceneTarget} seconds long (18-26 seconds), with r
 
       const ai = getAiClient();
 
+      const ttsPrompt = combinedStyle
+        ? `[Voice style: ${combinedStyle}]\n\n${cleanText}`
+        : cleanText;
+
       const callTtsModel = (model: 'gemini-3.8-flash-tts' | 'gemini-3.8-flash-lite-tts') =>
         withRetry(() =>
           ai.models.generateContent({
@@ -1167,14 +1172,7 @@ Each scene must be around ${perSceneTarget} seconds long (18-26 seconds), with r
             contents: [
               {
                 role: 'user',
-                parts: [
-                  {
-                    text: cleanText,
-                    speechMetadata: {
-                      style: combinedStyle,
-                    },
-                  },
-                ],
+                parts: [{ text: ttsPrompt }],
               },
             ],
             config: {
@@ -1254,6 +1252,7 @@ Write "title" and "reason" in the same language as the transcript (or ${preferre
 Indexed Transcript:
 ${indexedTranscript}`,
           config: {
+            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
             responseMimeType: 'application/json',
             responseSchema: {
               type: Type.OBJECT,
@@ -1312,6 +1311,24 @@ ${indexedTranscript}`,
       res.status(500).json({ error: `Deteksi momen viral AI gagal: ${msg}` });
     }
   });
+
+  app.use('/api/*', (_req, res) => {
+    res.status(404).json({ error: 'Endpoint API tidak ditemukan.' });
+  });
+
+  app.use(
+    (
+      err: unknown,
+      _req: express.Request,
+      res: express.Response,
+      _next: express.NextFunction
+    ) => {
+      const msg = err instanceof Error ? err.message : 'Terjadi kesalahan pada server API.';
+      if (!res.headersSent) {
+        res.status(500).json({ error: msg });
+      }
+    }
+  );
 
   return app;
 }

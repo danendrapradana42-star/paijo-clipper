@@ -21,7 +21,11 @@ async function startServer() {
   } else {
     const distPath = path.resolve(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (_req, res) => {
+    app.get('*', (req, res) => {
+      if (req.path.startsWith('/api/')) {
+        res.status(404).json({ error: 'Endpoint API tidak ditemukan.' });
+        return;
+      }
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

@@ -60,6 +60,7 @@ import {
   retimeCues,
 } from './utils/subtitles';
 import { exportSingleClip, supportedExportMime } from './utils/videoExporter';
+import { readApiJson } from './utils/safeApiJson';
 
 const PREFS_KEY = 'autoclipper.studio.prefs.v2';
 
@@ -301,6 +302,28 @@ export default function App() {
       window.paijoDesktop?.setRenderActive?.(false);
     };
   }, [exporting, batchRunning]);
+
+  const handleChangeCaptionSettings = useCallback((patch: Partial<CaptionSettings>) => {
+    setCaptionSettings((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  const handleRegisterExport = useCallback((rec: ExportedClipRecord) => {
+    setExportedRecords((prev) => [rec, ...prev]);
+  }, []);
+
+  // Clean up object URL & timers on unmount
+  useEffect(() => {
+    return () => {
+      window.clearInterval(transcribeTimerRef.current);
+      window.clearTimeout(ytInspectTimerRef.current);
+      if (objectUrlRef.current) {
+        try {
+          URL.revokeObjectURL(objectUrlRef.current);
+        } catch {}
+        objectUrlRef.current = null;
+      }
+    };
+  }, []);
 
   const handleSignInGoogle = async () => {
     setAuthError('');
@@ -725,8 +748,14 @@ export default function App() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url: rawUrl }),
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Gagal memeriksa video YouTube.');
+        const data = await readApiJson<{
+          id: string;
+          title: string;
+          channel: string;
+          thumbnail: string;
+          duration: number;
+          canDownloadDirect: boolean;
+        }>(res, 'Gagal memeriksa video YouTube.');
         setYtPreview({
           id: data.id,
           url: rawUrl,
@@ -769,9 +798,13 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: rawUrl, quality }),
       });
-      const data = await res.json();
-      if (!res.ok || !data.fileUrl) {
-        throw new Error(data.error || 'Gagal mengunduh video YouTube.');
+      const data = await readApiJson<{
+        fileUrl?: string;
+        filename?: string;
+        title?: string;
+      }>(res, 'Gagal mengunduh video YouTube.');
+      if (!data.fileUrl) {
+        throw new Error('Gagal mengunduh video YouTube.');
       }
       const fileRes = await fetch(data.fileUrl);
       if (!fileRes.ok) throw new Error('Gagal membaca stream file hasil unduhan.');
@@ -807,8 +840,10 @@ export default function App() {
           uiLocale: locale,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Deteksi momen viral AI gagal.');
+      const data = await readApiJson<{ clips?: unknown[] }>(
+        res,
+        'Deteksi momen viral AI gagal.'
+      );
       const rawClips = Array.isArray(data.clips) ? data.clips : [];
       if (!rawClips.length) {
         setStatusMessage('AI tidak menemukan segmen viral baru di transkrip ini. Coba ubah rentang durasi.');
@@ -1520,8 +1555,10 @@ export default function App() {
                 cues={cues}
                 transcriptEditorText={transcriptEditorText}
                 onChangeTranscriptEditorText={setTranscriptEditorText}
-                onApplyTranscriptEdit={() => {
-                  const { cues: parsed, bad } = parseEditedTranscript(transcriptEditorText);
+                onApplyTranscriptEdit={(textOverride) => {
+                  const sourceText =
+                    typeof textOverride === 'string' ? textOverride : transcriptEditorText;
+                  const { cues: parsed, bad } = parseEditedTranscript(sourceText);
                   if (!parsed.length) {
                     setStatusMessage('Tidak ada baris subtitle bertimecode yang valid.');
                     return;
@@ -1638,9 +1675,7 @@ export default function App() {
                   )
                 }
                 captionSettings={captionSettings}
-                onChangeCaptionSettings={(patch) =>
-                  setCaptionSettings((prev) => ({ ...prev, ...patch }))
-                }
+                onChangeCaptionSettings={handleChangeCaptionSettings}
                 framingMode={framingMode}
                 onChangeFramingMode={setFramingMode}
                 manualPanX={manualPanX}
@@ -1663,10 +1698,8 @@ export default function App() {
             {view === 'aivideo' && (
               <AiVideoView
                 captionSettings={captionSettings}
-                onChangeCaptionSettings={(patch) =>
-                  setCaptionSettings((prev) => ({ ...prev, ...patch }))
-                }
-                onRegisterExport={(rec) => setExportedRecords((prev) => [rec, ...prev])}
+                onChangeCaptionSettings={handleChangeCaptionSettings}
+                onRegisterExport={handleRegisterExport}
                 onSendToStudio={async (file, srtText, title) => {
                   const parsed = parseSubs(srtText);
                   setImportedSubName('Subtitle Video AI');

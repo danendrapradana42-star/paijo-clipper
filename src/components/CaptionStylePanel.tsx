@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check } from 'lucide-react';
 import { useTranslation } from '../i18n/LanguageContext';
 import type { CaptionSettings, SubtitlePosition, SubtitleStyleId } from '../types/clipper';
@@ -28,6 +28,8 @@ export function CaptionStylePanel({
 }: CaptionStylePanelProps) {
   const { t } = useTranslation();
   const [fontCategory, setFontCategory] = useState<FontCategory>('all');
+  const onFontReadyRef = useRef(onFontReady);
+  onFontReadyRef.current = onFontReady;
 
   useEffect(() => {
     let active = true;
@@ -36,12 +38,12 @@ export function CaptionStylePanel({
       Boolean(settings.italic),
       settings.fontWeight || '800'
     ).then(() => {
-      if (active) onFontReady?.();
+      if (active) onFontReadyRef.current?.();
     });
     return () => {
       active = false;
     };
-  }, [settings.fontFamily, settings.italic, settings.fontWeight, onFontReady]);
+  }, [settings.fontFamily, settings.italic, settings.fontWeight]);
 
   const filteredFonts =
     fontCategory === 'all'

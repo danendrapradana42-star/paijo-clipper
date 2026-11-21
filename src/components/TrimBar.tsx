@@ -74,13 +74,18 @@ export function TrimBar({
     return out;
   }, [audioEnv, cues, windowStart, span]);
 
+  const dragRafRef = useRef<number>(0);
+  const pendingClientXRef = useRef<number | null>(null);
+  const dragRectRef = useRef<DOMRect | null>(null);
+
   useEffect(() => {
     if (!dragging || disabled) return;
+    dragRectRef.current = trackRef.current?.getBoundingClientRect() || null;
 
-    const onMove = (e: PointerEvent) => {
-      const rect = trackRef.current?.getBoundingClientRect();
+    const applyPointerAt = (clientX: number) => {
+      const rect = dragRectRef.current || trackRef.current?.getBoundingClientRect();
       if (!rect || rect.width <= 0) return;
-      const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
       const tVal = toTime(frac);
       setLocal((cur) =>
         dragging === 'start'
@@ -89,7 +94,26 @@ export function TrimBar({
       );
     };
 
+    const onMove = (e: PointerEvent) => {
+      pendingClientXRef.current = e.clientX;
+      if (dragRafRef.current) return;
+      dragRafRef.current = requestAnimationFrame(() => {
+        dragRafRef.current = 0;
+        const cx = pendingClientXRef.current;
+        if (cx !== null) applyPointerAt(cx);
+      });
+    };
+
     const onUp = () => {
+      if (dragRafRef.current) {
+        cancelAnimationFrame(dragRafRef.current);
+        dragRafRef.current = 0;
+      }
+      if (pendingClientXRef.current !== null) {
+        applyPointerAt(pendingClientXRef.current);
+        pendingClientXRef.current = null;
+      }
+      dragRectRef.current = null;
       setLocal((cur) => {
         const snappedStart = Math.max(
           0,
@@ -110,6 +134,10 @@ export function TrimBar({
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp, { once: true });
     return () => {
+      if (dragRafRef.current) {
+        cancelAnimationFrame(dragRafRef.current);
+        dragRafRef.current = 0;
+      }
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
     };

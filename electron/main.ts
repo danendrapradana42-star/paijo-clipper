@@ -26,7 +26,10 @@ let activeUpdateDownloadCtrl: AbortController | null = null;
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+// Give 64-bit desktop renderer ample heap headroom for long video rendering without OOM crashes
+app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
 
 function loadDesktopEnv(appRoot: string): void {
   const userDataDir = app.getPath('userData');

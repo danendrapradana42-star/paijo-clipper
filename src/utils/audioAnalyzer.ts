@@ -97,7 +97,7 @@ export function findGap(
 
 export async function decodeVideoAudioEnvelope(
   file: File,
-  maxBytes = 420 * 1024 * 1024
+  maxBytes = 180 * 1024 * 1024
 ): Promise<AudioEnvelopeData | null> {
   if (!file || file.size > maxBytes) return null;
   const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;

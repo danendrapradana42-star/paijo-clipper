@@ -58,7 +58,7 @@ interface StudioViewProps {
   cues: SubtitleCue[];
   transcriptEditorText: string;
   onChangeTranscriptEditorText: (v: string) => void;
-  onApplyTranscriptEdit: () => void;
+  onApplyTranscriptEdit: (textOverride?: string) => void;
   onDownloadSrt: () => void;
   aiTranscribeConsent: boolean;
   onChangeAiTranscribeConsent: (v: boolean) => void;
@@ -175,9 +175,61 @@ export function StudioView(props: StudioViewProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [showTranscriptEditor, setShowTranscriptEditor] = useState(false);
+  const [draftTranscript, setDraftTranscript] = useState(transcriptEditorText);
   const [previewVolume, setPreviewVolume] = useState(1);
   const [previewMuted, setPreviewMuted] = useState(false);
   const [zipExporting, setZipExporting] = useState(false);
+
+  const seekRafRef = useRef<number>(0);
+  const pendingSeekTimeRef = useRef<number | null>(null);
+  const transcriptDebounceRef = useRef<number>(0);
+
+  useEffect(() => {
+    setDraftTranscript(transcriptEditorText);
+  }, [transcriptEditorText]);
+
+  useEffect(() => {
+    return () => {
+      if (seekRafRef.current) {
+        cancelAnimationFrame(seekRafRef.current);
+        seekRafRef.current = 0;
+      }
+      window.clearTimeout(transcriptDebounceRef.current);
+    };
+  }, []);
+
+  const scheduleVideoSeek = (targetTime: number) => {
+    const vid = videoElRef.current;
+    if (!vid || !videoReady || exporting) return;
+    const maxDur = videoDuration || vid.duration || 0;
+    const clamped = Math.max(0, maxDur > 0 ? Math.min(maxDur, targetTime) : targetTime);
+    pendingSeekTimeRef.current = clamped;
+    setCurrentTime(clamped);
+    if (seekRafRef.current) return;
+    seekRafRef.current = requestAnimationFrame(() => {
+      seekRafRef.current = 0;
+      const nextTime = pendingSeekTimeRef.current;
+      pendingSeekTimeRef.current = null;
+      const v = videoElRef.current;
+      if (v && nextTime !== null && v.readyState >= 1) {
+        v.currentTime = nextTime;
+      }
+    });
+  };
+
+  const handleTranscriptDraftChange = (val: string) => {
+    setDraftTranscript(val);
+    window.clearTimeout(transcriptDebounceRef.current);
+    transcriptDebounceRef.current = window.setTimeout(() => {
+      onChangeTranscriptEditorText(val);
+    }, 300);
+  };
+
+  const flushAndApplyTranscript = () => {
+    window.clearTimeout(transcriptDebounceRef.current);
+    onChangeTranscriptEditorText(draftTranscript);
+    onApplyTranscriptEdit(draftTranscript);
+  };
 
   const activeClip = clips[selectedClipIdx] || clips[0] || null;
 
@@ -208,40 +260,73 @@ export function StudioView(props: StudioViewProps) {
     }
   }, [captionSettings.fontFamily, captionSettings.fontSize]);
 
-  // Main live preview render loop
+  const canvasCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const [fontLoadedTick, setFontLoadedTick] = useState(0);
+
+  // Main live preview render loop (skips idle/paused redraws, throttles UI timer to ~6Hz)
   useEffect(() => {
     let rafId = 0;
-    const renderLoop = () => {
+    let lastDrawnKey = '';
+    let lastUiSyncAt = 0;
+    let lastUiTime = -1;
+
+    const renderLoop = (now: number) => {
       const cvs = canvasRef.current;
       const vid = videoElRef.current;
       if (cvs) {
-        const ctx = cvs.getContext('2d', { alpha: false });
+        if (!canvasCtxRef.current) {
+          canvasCtxRef.current = cvs.getContext('2d', { alpha: false });
+        }
+        const ctx = canvasCtxRef.current;
         if (ctx) {
           if (vid && vid.readyState >= 2) {
-            if (!vid.paused && !vid.ended && framingMode === 'motion') {
-              updateMotionFocus(vid, motionRef.current);
+            const vidTime = vid.currentTime;
+            const isActivePlay = !vid.paused && !vid.ended;
+            const drawKey = `v:${vidTime.toFixed(3)}|${fontLoadedTick}|${framingMode}|${manualPanX}|${exporting}`;
+
+            if (isActivePlay || drawKey !== lastDrawnKey) {
+              lastDrawnKey = drawKey;
+              if (isActivePlay && framingMode === 'motion') {
+                updateMotionFocus(vid, motionRef.current);
+              }
+              drawVideoFrame(vid, cvs, ctx, {
+                framingMode,
+                manualPanX,
+                motionState: motionRef.current,
+                cues,
+                captionSettings,
+                audioEnv,
+              });
             }
-            drawVideoFrame(vid, cvs, ctx, {
-              framingMode,
-              manualPanX,
-              motionState: motionRef.current,
-              cues,
-              captionSettings,
-              audioEnv,
-            });
-            setCurrentTime(vid.currentTime);
-            if (!exporting && activeClip && !vid.paused && vid.currentTime >= activeClip.end) {
+
+            if (
+              (!isActivePlay && Math.abs(vidTime - lastUiTime) > 0.01) ||
+              (isActivePlay && now - lastUiSyncAt >= 150)
+            ) {
+              lastUiSyncAt = now;
+              lastUiTime = vidTime;
+              setCurrentTime(vidTime);
+            }
+
+            if (!exporting && activeClip && !vid.paused && vidTime >= activeClip.end) {
               vid.pause();
               vid.currentTime = activeClip.end;
+              lastUiTime = activeClip.end;
+              setCurrentTime(activeClip.end);
               setIsPlaying(false);
             }
           } else {
-            drawIdleCanvas(cvs, ctx, ytPreview);
+            const idleKey = `idle:${ytPreview?.id || ''}:${ytPreview?.state || ''}:${ytPreview?.title || ''}`;
+            if (idleKey !== lastDrawnKey) {
+              lastDrawnKey = idleKey;
+              drawIdleCanvas(cvs, ctx, ytPreview);
+            }
           }
         }
       }
       rafId = requestAnimationFrame(renderLoop);
     };
+
     rafId = requestAnimationFrame(renderLoop);
     return () => cancelAnimationFrame(rafId);
   }, [
@@ -254,14 +339,21 @@ export function StudioView(props: StudioViewProps) {
     ytPreview,
     activeClip,
     exporting,
+    fontLoadedTick,
   ]);
 
   useEffect(() => {
+    let active = true;
     ensureFontLoaded(
       captionSettings.fontFamily,
       Boolean(captionSettings.italic),
       captionSettings.fontWeight || '800'
-    );
+    ).then(() => {
+      if (active) setFontLoadedTick((v) => v + 1);
+    });
+    return () => {
+      active = false;
+    };
   }, [captionSettings.fontFamily, captionSettings.italic, captionSettings.fontWeight]);
 
   // Keyboard shortcuts for comfortable editing (Space play/pause, Left/Right seek 2s)
@@ -285,12 +377,12 @@ export function StudioView(props: StudioViewProps) {
         }
       } else if (e.code === 'ArrowLeft') {
         e.preventDefault();
-        vid.currentTime = Math.max(0, vid.currentTime - 2);
-        setCurrentTime(vid.currentTime);
+        const base = pendingSeekTimeRef.current ?? vid.currentTime;
+        scheduleVideoSeek(base - 2);
       } else if (e.code === 'ArrowRight') {
         e.preventDefault();
-        vid.currentTime = Math.min(videoDuration || vid.duration || 0, vid.currentTime + 2);
-        setCurrentTime(vid.currentTime);
+        const base = pendingSeekTimeRef.current ?? vid.currentTime;
+        scheduleVideoSeek(base + 2);
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -327,16 +419,14 @@ export function StudioView(props: StudioViewProps) {
     const minT = activeClip ? activeClip.start : 0;
     const maxT = activeClip ? activeClip.end : videoDuration;
     const target = minT + ratio * Math.max(0.1, maxT - minT);
-    vid.currentTime = target;
-    setCurrentTime(target);
+    scheduleVideoSeek(target);
   };
 
   const handleStep = (delta: number) => {
     const vid = videoElRef.current;
     if (!vid || !videoReady || exporting) return;
-    const next = Math.max(0, Math.min(videoDuration || vid.duration || 0, vid.currentTime + delta));
-    vid.currentTime = next;
-    setCurrentTime(next);
+    const base = pendingSeekTimeRef.current ?? vid.currentTime;
+    scheduleVideoSeek(base + delta);
   };
 
   const clipStart = activeClip ? activeClip.start : 0;
@@ -878,15 +968,19 @@ export function StudioView(props: StudioViewProps) {
                         {t('studio.transcriptEditHint')}
                       </div>
                       <textarea
-                        value={transcriptEditorText}
-                        onChange={(e) => onChangeTranscriptEditorText(e.target.value)}
+                        value={draftTranscript}
+                        onChange={(e) => handleTranscriptDraftChange(e.target.value)}
+                        onBlur={() => {
+                          window.clearTimeout(transcriptDebounceRef.current);
+                          onChangeTranscriptEditorText(draftTranscript);
+                        }}
                         rows={7}
                         className="w-full bg-[#070e20] text-[#e4ecfa] border border-[#2a4173] rounded-lg p-2.5 font-mono text-xs leading-relaxed focus:outline-none focus:border-[#ff6b00]"
                       />
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={onApplyTranscriptEdit}
+                          onClick={flushAndApplyTranscript}
                           className="px-3 py-1.5 rounded-lg bg-[#16264d] hover:bg-[#1e3363] border border-[#2a4173] text-xs font-semibold text-white cursor-pointer"
                         >
                           {t('studio.applyEdits')}

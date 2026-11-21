@@ -5,17 +5,13 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/index.ts": {
+    "api/**/*.ts": {
       "maxDuration": 60
     }
   },
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "/api/index.ts"
-    },
-    {
-      "source": "/((?!api/|assets/|downloads/|favicon\\.ico|robots\\.txt).*)",
+      "source": "/((?!api(?:/|$)|assets/|downloads/|favicon\\.ico|robots\\.txt).*)",
       "destination": "/index.html"
     }
   ],

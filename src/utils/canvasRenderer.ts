@@ -144,7 +144,11 @@ export function updateMotionFocus(source: HTMLVideoElement, state: MotionState) 
         }
       }
     }
-    state.previous = new Uint8ClampedArray(frame);
+    if (!state.previous || state.previous.length !== frame.length) {
+      state.previous = new Uint8ClampedArray(frame);
+    } else {
+      state.previous.set(frame);
+    }
   } catch {
     // Ignore cross-origin or transient decode issues
   }

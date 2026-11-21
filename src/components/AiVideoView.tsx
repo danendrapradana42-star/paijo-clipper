@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BookOpen,
   ChevronDown,
@@ -33,6 +33,7 @@ import {
   type RenderedSceneFrame,
 } from '../utils/aiPipeline';
 import { buildSrtFromScenes, formatClock } from '../utils/subtitles';
+import { readApiJson } from '../utils/safeApiJson';
 import { CaptionStylePanel } from './CaptionStylePanel';
 
 interface AiVideoViewProps {
@@ -75,12 +76,78 @@ const VOICE_PRESETS: Array<{ id: string; label: string; shortName: string; previ
 ];
 
 const DURATION_OPTIONS = [
-  { minutes: 5, sceneCount: 15, labelKey: 'ai.dur5' as const },
-  { minutes: 6, sceneCount: 18, labelKey: 'ai.dur6' as const },
-  { minutes: 7, sceneCount: 21, labelKey: 'ai.dur7' as const },
-  { minutes: 8, sceneCount: 24, labelKey: 'ai.dur8' as const },
-  { minutes: 10, sceneCount: 28, labelKey: 'ai.dur10' as const },
+  { minutes: 5, sceneCount: 22, labelKey: 'ai.dur5' as const },
+  { minutes: 6, sceneCount: 26, labelKey: 'ai.dur6' as const },
+  { minutes: 7, sceneCount: 30, labelKey: 'ai.dur7' as const },
+  { minutes: 8, sceneCount: 34, labelKey: 'ai.dur8' as const },
+  { minutes: 10, sceneCount: 42, labelKey: 'ai.dur10' as const },
 ];
+
+interface SceneNarrationInputProps {
+  index: number;
+  value: string;
+  onDraftChange: (idx: number, val: string) => void;
+  onCommit: (idx: number, val: string) => void;
+}
+
+const SceneNarrationInput = memo(function SceneNarrationInput({
+  index,
+  value,
+  onDraftChange,
+  onCommit,
+}: SceneNarrationInputProps) {
+  const [localValue, setLocalValue] = useState(value);
+  const timerRef = useRef<number | null>(null);
+  const lastCommittedRef = useRef(value);
+
+  useEffect(() => {
+    if (value !== lastCommittedRef.current) {
+      lastCommittedRef.current = value;
+      setLocalValue(value);
+    }
+  }, [value]);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+      }
+    };
+  }, []);
+
+  const flushCommit = (nextVal: string) => {
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    if (nextVal !== lastCommittedRef.current) {
+      lastCommittedRef.current = nextVal;
+      onCommit(index, nextVal);
+    }
+  };
+
+  return (
+    <textarea
+      rows={2}
+      value={localValue}
+      onChange={(e) => {
+        const nextVal = e.target.value;
+        setLocalValue(nextVal);
+        onDraftChange(index, nextVal);
+        if (timerRef.current !== null) {
+          window.clearTimeout(timerRef.current);
+        }
+        timerRef.current = window.setTimeout(() => {
+          timerRef.current = null;
+          lastCommittedRef.current = nextVal;
+          onCommit(index, nextVal);
+        }, 280);
+      }}
+      onBlur={(e) => flushCommit(e.target.value)}
+      className="w-full bg-[#070e20] text-[#f1f5fc] border border-[#2a4173] rounded-lg p-2 text-xs focus:outline-none focus:border-[#ff6b00]"
+    />
+  );
+});
 
 export function AiVideoView({
   captionSettings,
@@ -143,14 +210,73 @@ export function AiVideoView({
     srtText: string;
   } | null>(null);
 
-  const timeline = buildTimeline(scenes, frames, voices);
+  const timeline = useMemo(
+    () => buildTimeline(scenes, frames, voices),
+    [scenes, frames, voices]
+  );
   const totalSec = timeline[timeline.length - 1]?.endSec || 0;
+  const handleFontReady = useCallback(() => setFontTick((v) => v + 1), []);
 
-  // Draw preview frame
+  const previewSecRef = useRef(0);
+  previewSecRef.current = previewSec;
+  const scenesRef = useRef(scenes);
+  scenesRef.current = scenes;
+  const voicesRef = useRef(voices);
+  voicesRef.current = voices;
+  const finalVideoRef = useRef(finalVideo);
+  finalVideoRef.current = finalVideo;
+  const canvasCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const scrubRafRef = useRef<number>(0);
+  const pendingScrubSecRef = useRef<number>(0);
+  const draftNarrationsRef = useRef<Record<number, string>>({});
+
+  const handleNarrationDraftChange = useCallback((idx: number, val: string) => {
+    draftNarrationsRef.current[idx] = val;
+  }, []);
+
+  const handleNarrationCommit = useCallback((idx: number, val: string) => {
+    delete draftNarrationsRef.current[idx];
+    setScenes((prev) =>
+      prev.map((item, i) => (i === idx ? { ...item, narration: val, captionText: val } : item))
+    );
+  }, []);
+
+  const flushPendingNarrations = useCallback(
+    (sourceScenes: AiScene[]) => {
+      const pending = draftNarrationsRef.current;
+      const keys = Object.keys(pending);
+      if (!keys.length) return sourceScenes;
+      draftNarrationsRef.current = {};
+      const nextScenes = sourceScenes.map((item, idx) =>
+        Object.prototype.hasOwnProperty.call(pending, idx)
+          ? { ...item, narration: pending[idx], captionText: pending[idx] }
+          : item
+      );
+      setScenes(nextScenes);
+      return nextScenes;
+    },
+    []
+  );
+
+  const schedulePreviewScrub = useCallback((nextSec: number) => {
+    pendingScrubSecRef.current = nextSec;
+    setPreviewPlaying(false);
+    if (scrubRafRef.current) return;
+    scrubRafRef.current = window.requestAnimationFrame(() => {
+      scrubRafRef.current = 0;
+      setPreviewSec(pendingScrubSecRef.current);
+    });
+  }, []);
+
+  // Draw preview frame when paused or timeline/style updates
   useEffect(() => {
+    if (previewPlaying) return;
     const cvs = canvasRef.current;
     if (!cvs) return;
-    const ctx = cvs.getContext('2d', { alpha: false });
+    if (!canvasCtxRef.current) {
+      canvasCtxRef.current = cvs.getContext('2d', { alpha: false });
+    }
+    const ctx = canvasCtxRef.current;
     if (!ctx) return;
 
     if (!timeline.length) {
@@ -175,30 +301,104 @@ export function AiVideoView({
       includeCaptions,
       captionSettings,
     });
-  }, [timeline, totalSec, previewSec, visualEffect, transitionStyle, includeCaptions, captionSettings, fontTick, t]);
+  }, [
+    previewPlaying,
+    timeline,
+    totalSec,
+    previewSec,
+    visualEffect,
+    transitionStyle,
+    includeCaptions,
+    captionSettings,
+    fontTick,
+    t,
+  ]);
 
-  // Animated playback loop
+  // Animated 30fps canvas playback loop with throttled (~150ms) React slider updates
   useEffect(() => {
     if (!previewPlaying || totalSec <= 0) return;
-    const startAt = performance.now() - previewSec * 1000;
-    const timer = window.setInterval(() => {
-      const elapsed = (performance.now() - startAt) / 1000;
+    const cvs = canvasRef.current;
+    if (!cvs) return;
+    if (!canvasCtxRef.current) {
+      canvasCtxRef.current = cvs.getContext('2d', { alpha: false });
+    }
+    const ctx = canvasCtxRef.current;
+    if (!ctx) return;
+
+    let rafId = 0;
+    let active = true;
+    const startAt = performance.now() - previewSecRef.current * 1000;
+    let lastDrawAt = 0;
+    let lastUiSyncAt = 0;
+
+    const tick = (now: number) => {
+      if (!active) return;
+      const elapsed = (now - startAt) / 1000;
       if (elapsed >= totalSec) {
         setPreviewSec(0);
         setPreviewPlaying(false);
-      } else {
+        return;
+      }
+      if (now - lastDrawAt >= 32) {
+        lastDrawAt = now;
+        renderTimelineFrame(ctx, 720, 1280, timeline, elapsed, {
+          visualEffect,
+          transitionStyle,
+          includeCaptions,
+          captionSettings,
+        });
+      }
+      if (now - lastUiSyncAt >= 150) {
+        lastUiSyncAt = now;
         setPreviewSec(elapsed);
       }
-    }, 33);
-    return () => clearInterval(timer);
-  }, [previewPlaying, totalSec]);
+      rafId = requestAnimationFrame(tick);
+    };
 
-  // Stop voice sample audio cleanly on unmount
+    rafId = requestAnimationFrame(tick);
+    return () => {
+      active = false;
+      cancelAnimationFrame(rafId);
+    };
+  }, [previewPlaying, totalSec, timeline, visualEffect, transitionStyle, includeCaptions, captionSettings]);
+
+  // Clean up audio, active renders, and temporary object URLs on unmount
   useEffect(() => {
     return () => {
+      abortControllerRef.current?.abort();
       if (voiceSampleAudioRef.current) {
         voiceSampleAudioRef.current.pause();
         voiceSampleAudioRef.current = null;
+      }
+      if (micRecorderRef.current) {
+        try {
+          micRecorderRef.current.stream.getTracks().forEach((tr) => tr.stop());
+          micRecorderRef.current.recorder.stop();
+        } catch {}
+        micRecorderRef.current = null;
+      }
+      voicesRef.current.forEach((v) => {
+        if (v?.url) {
+          try {
+            URL.revokeObjectURL(v.url);
+          } catch {}
+        }
+      });
+      scenesRef.current.forEach((sc) => {
+        if (sc.customImageUrl) {
+          try {
+            URL.revokeObjectURL(sc.customImageUrl);
+          } catch {}
+        }
+      });
+      if (scrubRafRef.current) {
+        window.cancelAnimationFrame(scrubRafRef.current);
+        scrubRafRef.current = 0;
+      }
+      if (finalVideoRef.current?.url) {
+        try {
+          URL.revokeObjectURL(finalVideoRef.current.url);
+        } catch {}
       }
     };
   }, []);
@@ -261,8 +461,12 @@ export function AiVideoView({
           videoType,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Gagal menyusun naskah AI.');
+      const data = await readApiJson<{
+        title?: string;
+        summary?: string;
+        totalDurationSec?: number;
+        scenes?: AiScene[];
+      }>(res, 'Gagal menyusun naskah AI.');
 
       voices.forEach((v) => {
         if (v?.url) {
@@ -273,6 +477,7 @@ export function AiVideoView({
       });
 
       const nextScenes: AiScene[] = data.scenes || [];
+      draftNarrationsRef.current = {};
       setTitle(data.title || prompt.trim());
       setScenes(nextScenes);
       setFrames([]);
@@ -295,7 +500,8 @@ export function AiVideoView({
   };
 
   const generateFrames = async (targetScenes = scenes): Promise<RenderedSceneFrame[] | null> => {
-    if (!targetScenes.length) {
+    const syncedScenes = flushPendingNarrations(targetScenes);
+    if (!syncedScenes.length) {
       setStatusText('Buat naskah terlebih dahulu pada Tahap 1.');
       return null;
     }
@@ -305,10 +511,10 @@ export function AiVideoView({
     setStatusText('Menyiapkan frame visual untuk tiap adegan…');
     try {
       const out: RenderedSceneFrame[] = [];
-      for (let i = 0; i < targetScenes.length; i++) {
-        const frame = await renderSceneFrame(targetScenes[i], i, targetScenes.length, theme);
+      for (let i = 0; i < syncedScenes.length; i++) {
+        const frame = await renderSceneFrame(syncedScenes[i], i, syncedScenes.length, theme);
         out.push(frame);
-        setProgressPct(38 + ((i + 1) / targetScenes.length) * 18);
+        setProgressPct(38 + ((i + 1) / syncedScenes.length) * 18);
       }
       setFrames(out);
       setProgressPct(56);
@@ -334,9 +540,12 @@ export function AiVideoView({
       }),
       signal,
     });
-    const data = await res.json();
-    if (!res.ok || !data.audioDataUrl) {
-      throw new Error(data.error || 'Gagal membuat suara narasi AI.');
+    const data = await readApiJson<{ audioDataUrl?: string }>(
+      res,
+      'Gagal membuat suara narasi AI.'
+    );
+    if (!data.audioDataUrl) {
+      throw new Error('Gagal membuat suara narasi AI.');
     }
     const resp = await fetch(data.audioDataUrl, { signal });
     const blob = await resp.blob();
@@ -348,30 +557,31 @@ export function AiVideoView({
   const generateAllVoices = async (
     targetScenes = scenes
   ): Promise<{ tracks: Array<AiVoiceTrack | null>; aborted: boolean } | null> => {
-    if (!targetScenes.length) return null;
+    const syncedScenes = flushPendingNarrations(targetScenes);
+    if (!syncedScenes.length) return null;
     setBusy(true);
     const ctrl = new AbortController();
     abortControllerRef.current = ctrl;
     setProgressPct(60);
     setProgressLabel(`3/4 · Membuat narasi AI (${selectedVoicePreset.shortName})`);
-    setStatusText(`Menghasilkan suara narasi ${selectedVoicePreset.shortName} untuk ${targetScenes.length} adegan…`);
+    setStatusText(`Menghasilkan suara narasi ${selectedVoicePreset.shortName} untuk ${syncedScenes.length} adegan…`);
     let failedCount = 0;
     try {
-      const nextVoices: Array<AiVoiceTrack | null> = new Array(targetScenes.length)
+      const nextVoices: Array<AiVoiceTrack | null> = new Array(syncedScenes.length)
         .fill(null)
         .map((_, idx) => voices[idx] ?? null);
 
-      for (let i = 0; i < targetScenes.length; i++) {
+      for (let i = 0; i < syncedScenes.length; i++) {
         if (ctrl.signal.aborted) break;
-        setProgressPct(60 + ((i + 1) / targetScenes.length) * 18);
-        setProgressLabel(`3/4 · Suara adegan ${i + 1}/${targetScenes.length}`);
+        setProgressPct(60 + ((i + 1) / syncedScenes.length) * 18);
+        setProgressLabel(`3/4 · Suara adegan ${i + 1}/${syncedScenes.length}`);
         if (nextVoices[i]?.url) {
           try {
             URL.revokeObjectURL(nextVoices[i]!.url);
           } catch {}
         }
         try {
-          nextVoices[i] = await synthesizeOneVoice(targetScenes[i], ctrl.signal);
+          nextVoices[i] = await synthesizeOneVoice(syncedScenes[i], ctrl.signal);
           setVoices([...nextVoices]);
         } catch (err) {
           if ((err as { name?: string })?.name === 'AbortError' || ctrl.signal.aborted) {
@@ -408,7 +618,8 @@ export function AiVideoView({
     targetFrames = frames,
     targetVoices = voices
   ) => {
-    const tl = buildTimeline(targetScenes, targetFrames, targetVoices);
+    const syncedScenes = flushPendingNarrations(targetScenes);
+    const tl = buildTimeline(syncedScenes, targetFrames, targetVoices);
     if (!tl.length) {
       setStatusText('Selesaikan Tahap 1 dan 2 terlebih dahulu sebelum merender.');
       return;
@@ -441,8 +652,15 @@ export function AiVideoView({
       });
 
       const durations = tl.map((s) => s.durationSec);
-      const srtText = buildSrtFromScenes(targetScenes, durations);
-      setFinalVideo({ ...result, srtText });
+      const srtText = buildSrtFromScenes(syncedScenes, durations);
+      setFinalVideo((prev) => {
+        if (prev?.url && prev.url !== result.url) {
+          try {
+            URL.revokeObjectURL(prev.url);
+          } catch {}
+        }
+        return { ...result, srtText };
+      });
 
       const slug =
         (title || 'ai-video')
@@ -465,7 +683,7 @@ export function AiVideoView({
         sizeBytes: result.sizeBytes,
         label: projectTitle,
         sourceLabel: 'Video AI Otomatis',
-        captionText: targetScenes.map((s) => s.narration).filter(Boolean).slice(0, 2).join(' '),
+        captionText: syncedScenes.map((s) => s.narration).filter(Boolean).slice(0, 2).join(' '),
         createdAt: Date.now(),
       });
 
@@ -608,8 +826,7 @@ export function AiVideoView({
             disabled={!frames.length || totalSec <= 0}
             value={totalSec ? Math.round((previewSec / totalSec) * 1000) : 0}
             onChange={(e) => {
-              setPreviewPlaying(false);
-              setPreviewSec((Number(e.target.value) / 1000) * totalSec);
+              schedulePreviewScrub((Number(e.target.value) / 1000) * totalSec);
             }}
             className="w-full cursor-pointer disabled:opacity-40"
           />
@@ -933,18 +1150,11 @@ export function AiVideoView({
                         </span>
                       </div>
 
-                      <textarea
-                        rows={2}
+                      <SceneNarrationInput
+                        index={idx}
                         value={sc.narration}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setScenes((prev) =>
-                            prev.map((item, i) =>
-                              i === idx ? { ...item, narration: val, captionText: val } : item
-                            )
-                          );
-                        }}
-                        className="w-full bg-[#070e20] text-[#f1f5fc] border border-[#2a4173] rounded-lg p-2 text-xs focus:outline-none focus:border-[#ff6b00]"
+                        onDraftChange={handleNarrationDraftChange}
+                        onCommit={handleNarrationCommit}
                       />
 
                       <div className="flex flex-wrap items-center gap-2">
@@ -968,7 +1178,8 @@ export function AiVideoView({
                           onClick={async () => {
                             try {
                               setStatusText(`TTS ${idx + 1}…`);
-                              const tr = await synthesizeOneVoice(sc);
+                              const targetScene = flushPendingNarrations(scenes)[idx] || sc;
+                              const tr = await synthesizeOneVoice(targetScene);
                               setVoices((prev) => {
                                 const next = [...prev];
                                 if (next[idx]?.url) URL.revokeObjectURL(next[idx]!.url);
@@ -1112,7 +1323,7 @@ export function AiVideoView({
               compact
               settings={captionSettings}
               onChange={onChangeCaptionSettings}
-              onFontReady={() => setFontTick((tVal) => tVal + 1)}
+              onFontReady={handleFontReady}
             />
           )}
 

@@ -192,6 +192,25 @@ export function buildTimeline(
   return segments;
 }
 
+let vignetteSurface: HTMLCanvasElement | null = null;
+function getVignetteSurface(W: number, H: number): HTMLCanvasElement | null {
+  if (typeof document === 'undefined') return null;
+  if (!vignetteSurface || vignetteSurface.width !== W || vignetteSurface.height !== H) {
+    vignetteSurface = document.createElement('canvas');
+    vignetteSurface.width = W;
+    vignetteSurface.height = H;
+    const vCtx = vignetteSurface.getContext('2d');
+    if (vCtx) {
+      const vig = vCtx.createRadialGradient(W / 2, H / 2, W * 0.25, W / 2, H / 2, H * 0.65);
+      vig.addColorStop(0, 'transparent');
+      vig.addColorStop(1, 'rgba(0,0,0,0.42)');
+      vCtx.fillStyle = vig;
+      vCtx.fillRect(0, 0, W, H);
+    }
+  }
+  return vignetteSurface;
+}
+
 export function renderTimelineFrame(
   ctx: CanvasRenderingContext2D,
   W: number,
@@ -217,6 +236,10 @@ export function renderTimelineFrame(
   const localT = Math.max(0, sec - seg.startSec);
   const norm = Math.min(1, localT / Math.max(0.1, seg.durationSec));
   const transDur = 0.45;
+  const cachedVignette =
+    options.visualEffect === 'cinematic' || options.visualEffect === 'kenburns'
+      ? getVignetteSurface(W, H)
+      : null;
 
   const drawFrameWithFx = (
     frameCanvas: HTMLCanvasElement,
@@ -237,12 +260,8 @@ export function renderTimelineFrame(
     const dh = H * scale;
     ctx.drawImage(frameCanvas, (W - dw) / 2 + offsetX, (H - dh) / 2, dw, dh);
 
-    if (options.visualEffect === 'cinematic' || options.visualEffect === 'kenburns') {
-      const vig = ctx.createRadialGradient(W / 2, H / 2, W * 0.25, W / 2, H / 2, H * 0.65);
-      vig.addColorStop(0, 'transparent');
-      vig.addColorStop(1, 'rgba(0,0,0,0.42)');
-      ctx.fillStyle = vig;
-      ctx.fillRect(0, 0, W, H);
+    if (cachedVignette) {
+      ctx.drawImage(cachedVignette, 0, 0, W, H);
     }
     ctx.restore();
   };
@@ -419,10 +438,12 @@ export async function renderAiVideo(params: {
 
     recorder.start(250);
     const t0 = performance.now();
+    let lastProgressAt = 0;
 
     intervalId = window.setInterval(() => {
       if (!active) return;
-      const elapsed = (performance.now() - t0) / 1000;
+      const now = performance.now();
+      const elapsed = (now - t0) / 1000;
       const sec = Math.min(totalSec, elapsed);
       renderTimelineFrame(ctx, 720, 1280, timeline, sec, {
         visualEffect,
@@ -430,10 +451,14 @@ export async function renderAiVideo(params: {
         includeCaptions,
         captionSettings,
       });
-      onProgress(Math.min(99, (sec / totalSec) * 100), sec, totalSec);
+      if (now - lastProgressAt >= 200) {
+        lastProgressAt = now;
+        onProgress(Math.min(99, (sec / totalSec) * 100), sec, totalSec);
+      }
       if (elapsed >= totalSec + 0.15) {
         active = false;
         clearInterval(intervalId);
+        onProgress(99, totalSec, totalSec);
         if (recorder.state !== 'inactive') {
           try {
             recorder.stop();
