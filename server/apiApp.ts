@@ -14,12 +14,12 @@ import {
   generateOpenAiCompatScript,
   probeLocalAiEngines,
   type LocalAiProvider,
-} from './localAi';
+} from './localAi.ts';
 import {
   probeLocalTtsCapability,
   synthesizeLocalSpeechWav,
   type LocalVoiceProvider,
-} from './localTts';
+} from './localTts.ts';
 import {
   VOICE_STUDIO_ASSETS,
   ensurePlayableAudioDataUrl,
@@ -27,7 +27,7 @@ import {
   importAssetToVoiceStudio,
   probeVoiceStudioLocal,
   resolveVoiceStudioAsset,
-} from './voiceStudio';
+} from './voiceStudio.ts';
 
 dotenv.config();
 

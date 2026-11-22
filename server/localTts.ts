@@ -8,7 +8,7 @@ import {
   probeVoiceStudioLocal,
   resolveVoiceStudioAsset,
   synthesizeWithVoiceStudio,
-} from './voiceStudio';
+} from './voiceStudio.ts';
 
 const execFileAsync = promisify(execFile);
 
